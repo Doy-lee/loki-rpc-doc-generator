@@ -960,7 +960,11 @@ void generate_markdown(std::vector<decl_struct_wrapper> const *declarations)
         if (decl.type == decl_struct_type::rpc_command)
         {
             fputs(" - [", stdout);
+#if 0
             fprint_string_and_escape_with_backslash(stdout, &decl.name, '_');
+#else
+            fprintf(stdout, "%.*s", decl.name.len, decl.name.str);
+#endif
 
             fputs("](#", stdout);
             for (int i = 0; i < decl.name.len; ++i)
@@ -1017,7 +1021,11 @@ void generate_markdown(std::vector<decl_struct_wrapper> const *declarations)
         }
 
         fputs("### ", stdout);
+#if 0
         fprint_string_and_escape_with_backslash(stdout, &global_decl.name, '_');
+#else
+        fprintf(stdout, "%.*s", global_decl.name.len, global_decl.name.str);
+#endif
         fputs("\n\n", stdout);
 
         if (wrapper.aliases.size() > 0 || wrapper.pre_decl_comments.size())
