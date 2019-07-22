@@ -6,5 +6,8 @@ Use the supplied build scripts `build_msvc.bat` (for Visual Studio) or `build_gc
 The build script compiles the executable to the Bin folder at the root of this repository.
 
 ## Usage
+For linux a helper script is provided to copy over the currently known set of files that are required for documentation generation.
+`./copy_source_files <path to loki root directory>`
+
 The executable outputs the contents to standard output. Redirect this to your file of choice, i.e.
 `loki_rpc_doc_generator.exe <cpp header file> > generated_document.html`
