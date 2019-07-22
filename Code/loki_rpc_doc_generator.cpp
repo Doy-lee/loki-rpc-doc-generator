@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include "loki_rpc_doc_generator.h"
+#include <csignal>
 
 bool string_lit_cmp(string_lit a, string_lit b)
 {
@@ -229,7 +230,6 @@ bool tokeniser_accept_token_if_type(tokeniser_t *tokeniser, token_type type, tok
 decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string_lit const *parent_type)
 {
   decl_var_metadata result  = {};
-  result.semantic           = decl_semantic_t::unknown;
   string_lit const var_type = (variable->is_array) ? variable->template_expr : variable->type;
 
   if (var_type == STRING_LIT("std::string"))
@@ -241,6 +241,7 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
         variable->name == STRING_LIT("miner_address") ||
         variable->name == STRING_LIT("change_address") ||
         variable->name == STRING_LIT("operator_address") ||
+        variable->name == STRING_LIT("base_address") ||
         variable->name == STRING_LIT("address"))
     {
       local_persist string_lit const EXAMPLE_ADDRESS = STRING_LIT("\"L8KJf3nRQ53NTX1YLjtHryjegFRa3ZCEGLKmRxUfvkBWK19UteEacVpYqpYscSJ2q8WRuHPFdk7Q5W8pQB7Py5kvUs8vKSk\"");
@@ -278,8 +279,14 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
       local_persist string_lit const EXAMPLE = STRING_LIT("\"127.0.0.1\"");
       result.example                         = &EXAMPLE;
     }
+    else if (variable->name ==  STRING_LIT("public_ip"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("\"8.8.8.8\"");
+      result.example                         = &EXAMPLE;
+    }
     else if (variable->name == STRING_LIT("txids") ||
              variable->name == STRING_LIT("tx_hashes") ||
+             variable->name == STRING_LIT("tx_hash_list") ||
              variable->name == STRING_LIT("txs_hashes") ||
              variable->name == STRING_LIT("missed_tx") ||
              variable->name == STRING_LIT("tx_hash") ||
@@ -289,8 +296,27 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
       local_persist string_lit const EXAMPLE = STRING_LIT("\"b605cab7e3b9fe1f6d322e3167cd26e1e61c764afa9d733233ef716787786123\"");
       result.example                         = &EXAMPLE;
     }
+    else if (variable->name == STRING_LIT("tx_key") ||
+             variable->name == STRING_LIT("tx_key_list"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("\"1982e99c69d8acc993cfc94ce59ff8f113d23482d9a25c892a3fc01c77dd8c4c\"");
+      result.example                         = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("tx_blob") ||
+             variable->name == STRING_LIT("tx_blob_list"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("\"0402f78b05f78b05f78b0501ffd98b0502b888ddcf730229f056f5594cfcfd8d44f8033c9fda22450693d1694038e1cecaaaac25a8fc12af8992bc800102534df00c14ead3b3dedea9e7bdcf71c44803349b5e9aee2f73e22d5385ac147b7601008e5729d9329320444666d9d9d9dc602a3ae585de91ab2ca125665e3a363610021100000001839fdb0000000000000000000001200408d5ad7ab79d9b05c94033c2029f4902a98ec51f5175564f6978467dbb28723f929cf806d4ee1c781d7771183a93a1fd74f0827bddee9baac7e3083ab2b5840000\"");
+      result.example                         = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("extra"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("\"01008e5729d9329320444666d9d9d9dc602a3ae585de91ab2ca125665e3a363610021100000001839fdb0000000000000000000001200408d5ad7ab79d9b05c94033c2029f4902a98ec51f5175564f6978467dbb28723f929cf806d4ee1c781d7771183a93a1fd74f0827bddee9baac7e3083ab2b584\"");
+      result.example                         = &EXAMPLE;
+    }
     else if (variable->name == STRING_LIT("service_node_pubkey") ||
              variable->name == STRING_LIT("quorum_nodes") ||
+             variable->name == STRING_LIT("validators") ||
+             variable->name == STRING_LIT("workers") ||
              variable->name == STRING_LIT("service_node_key") ||
              variable->name == STRING_LIT("nodes_to_test") ||
              variable->name == STRING_LIT("service_node_pubkeys"))
@@ -342,6 +368,26 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
     {
       local_persist string_lit const EXAMPLE = STRING_LIT("\"register_service_node 18446744073709551612 L8KJf3nRQ53NTX1YLjtHryjegFRa3ZCEGLKmRxUfvkBWK19UteEacVpYqpYscSJ2q8WRuHPFdk7Q5W8pQB7Py5kvUs8vKSk 18446744073709551612 1555894565 f90424b23c7969bb2f0191bca45e6433a59b0b37039a5e38a2ba8cc7ea1075a3 ba24e4bfb4af0f5f9f74e35f1a5685dc9250ee83f62a9ee8964c9a689cceb40b4f125c83d0cbb434e56712d0300e5a23fd37a5b60cddbcd94e2d578209532a0d\"");
       result.example                         = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("tag"))
+    {
+      local_persist string_lit const EXAMPLE   = STRING_LIT("\"My tag\"");
+      result.example                           = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("label"))
+    {
+      local_persist string_lit const EXAMPLE   = STRING_LIT("\"My label\"");
+      result.example                           = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("description"))
+    {
+      local_persist string_lit const EXAMPLE   = STRING_LIT("\"My account description\"");
+      result.example                           = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("transfer_type"))
+    {
+      local_persist string_lit const EXAMPLE   = STRING_LIT("\"all\"");
+      result.example                           = &EXAMPLE;
     }
 
     if (!result.example)
@@ -421,6 +467,21 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
       local_persist string_lit const EXAMPLE = STRING_LIT("8");
       result.example                         = &EXAMPLE;
     }
+    else if (variable->name == STRING_LIT("account_index"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("0");
+      result.example                         = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("address_indices"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("0");
+      result.example                         = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("address_index"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("0");
+      result.example                         = &EXAMPLE;
+    }
     else
     {
       local_persist string_lit const EXAMPLE = STRING_LIT("2130706433");
@@ -434,7 +495,7 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
 
     if (variable->name == STRING_LIT("service_node_version"))
     {
-      local_persist string_lit const EXAMPLE = STRING_LIT("3, 0");
+      local_persist string_lit const EXAMPLE = STRING_LIT("4, 0, 3");
       result.example                         = &EXAMPLE;
     }
     else
@@ -486,7 +547,6 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
   }
   else if (var_type == STRING_LIT("bool"))
   {
-    result.semantic = decl_semantic_t::boolean;
     if (variable->name == STRING_LIT("untrusted"))
     {
       local_persist string_lit const EXAMPLE = STRING_LIT("false");
@@ -504,7 +564,6 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
     local_persist string_lit const EXAMPLE   = STRING_LIT("\"bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70\"");
 
     result.converted_type = &NICE_NAME;
-    result.semantic       = decl_semantic_t::hash64;
     result.example        = &EXAMPLE;
   }
   else if (var_type == STRING_LIT("difficulty_type"))
@@ -513,7 +572,6 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
     local_persist string_lit const EXAMPLE   = STRING_LIT("25179406071");
 
     result.converted_type = &NICE_NAME;
-    result.semantic       = decl_semantic_t::uint64;
     result.example        = &EXAMPLE;
   }
 
@@ -551,8 +609,10 @@ bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable, string_
               break;
             }
           }
-
         }
+
+        if (member_function)
+          break;
 
         if (sub_token.type == token_type::semicolon || sub_token.type == token_type::equal)
         {
@@ -637,6 +697,8 @@ decl_struct fill_struct(tokeniser_t *tokeniser)
     {
         result.type = decl_struct_type::helper;
     }
+
+    // if (result.name == STRING_LIT("txpool_stats")) raise(SIGTRAP);
 
     if (!tokeniser_accept_token_if_type(tokeniser, token_type::left_curly_brace, &token))
         return result;
@@ -764,7 +826,11 @@ void fprint_curl_json_rpc_param(std::vector<decl_struct const *> *global_helper_
         decl_var const *inner_variable = &resolved_decl->variables[var_index];
         fprint_curl_json_rpc_param(global_helper_structs, rpc_helper_structs, inner_variable, indent_level);
         if (var_index < (resolved_decl->variables.size() - 1))
-          fprintf(stdout, ",\n");
+        {
+          if (!inner_variable->is_array)
+            fprintf(stdout, ",");
+          fprintf(stdout, "\n");
+        }
       }
 
       fprintf(stdout, "\n");
@@ -773,7 +839,7 @@ void fprint_curl_json_rpc_param(std::vector<decl_struct const *> *global_helper_
   }
 
   if (variable->is_array)
-    fprintf(stdout, ", ...]");
+    fprintf(stdout, "],");
 }
 
 void fprint_curl_example(std::vector<decl_struct const *> *global_helper_structs, std::vector<decl_struct const *> *rpc_helper_structs, decl_struct const *request, decl_struct const *response, string_lit const rpc_endpoint)
@@ -1318,7 +1384,6 @@ int main(int argc, char *argv[])
                 bool handled = false;
                 if (token.type == token_type::introspect_marker)
                 {
-
                   token = tokeniser_next_token(&tokeniser); // accept marker
                   for (token = tokeniser_peek_token(&tokeniser); token.type == token_type::comment; token = tokeniser_peek_token(&tokeniser))
                   {
@@ -1330,13 +1395,13 @@ int main(int argc, char *argv[])
                   if (token.type == token_type::identifier)
                   {
                       string_lit token_lit = token_to_string_lit(token);
-                      if (string_lit_cmp(token_lit, STRING_LIT("struct")))
+                      if (token_lit == STRING_LIT("struct"))
                       {
                           struct_wrapper.decl = fill_struct(&tokeniser);
                           declarations.push_back(struct_wrapper);
                           handled = true;
                       }
-                      else if (string_lit_cmp(token_lit, STRING_LIT("enum")))
+                      else if (token_lit == STRING_LIT("enum"))
                       {
                           // decl_struct doc = fill_struct(&tokeniser);
                       }

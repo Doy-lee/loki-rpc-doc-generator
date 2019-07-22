@@ -90,25 +90,9 @@ struct string_lit
 };
 #define STRING_LIT(str) (string_lit){str, CHAR_COUNT(str)}
 
-enum struct decl_semantic_t
-{
-  unknown,
-  binary,
-  hash64,
-  int64,
-  loki_address,
-  loki_amount,
-  boolean,
-  uint16,
-  uint32,
-  uint64,
-  uint8,
-};
-
 struct decl_var_metadata
 {
   string_lit const *example;
-  decl_semantic_t   semantic;
   string_lit const *converted_type;          // Convert c-isms to more generic pseudo code if availablei.e. uint64_t to uint64
   string_lit const *converted_template_expr; // Convert c-isms to more generic pseudo code if availablei.e. uint64_t to uint64
 };
@@ -193,6 +177,5 @@ struct type_conversion
 {
     string_lit const from;
     string_lit const to;
-    decl_semantic_t  semantic;
 };
 
