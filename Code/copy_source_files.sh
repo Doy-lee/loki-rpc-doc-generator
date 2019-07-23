@@ -4,6 +4,7 @@ if (( $# != 1 )); then
 fi;
 
 source_files=("${1}/src/cryptonote_protocol/cryptonote_protocol_defs.h" \
+  "${1}/src/cryptonote_basic/subaddress_index.h" \
   "${1}/src/rpc/core_rpc_server.h" \
   "${1}/src/rpc/core_rpc_server_commands_defs.h" \
   "${1}/src/wallet/wallet_rpc_server.h" \

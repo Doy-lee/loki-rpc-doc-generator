@@ -451,6 +451,16 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
       local_persist string_lit const EXAMPLE = STRING_LIT("English");
       result.example                         = &EXAMPLE;
     }
+    else if (variable->name == STRING_LIT("ring_size"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("10");
+      result.example                         = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("outputs"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("10");
+      result.example                         = &EXAMPLE;
+    }
     else
     {
       local_persist string_lit const EXAMPLE = STRING_LIT("123");
@@ -478,6 +488,16 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
       result.example                         = &EXAMPLE;
     }
     else if (variable->name == STRING_LIT("address_index"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("0");
+      result.example                         = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("subaddr_indices"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("0");
+      result.example                         = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("priority"))
     {
       local_persist string_lit const EXAMPLE = STRING_LIT("0");
       result.example                         = &EXAMPLE;
@@ -685,11 +705,11 @@ decl_struct fill_struct(tokeniser_t *tokeniser)
     {
         result.type = decl_struct_type::rpc_command;
     }
-    else if (string_lit_cmp(result.name, STRING_LIT("request")))
+    else if (string_lit_cmp(result.name, STRING_LIT("request_t")))
     {
         result.type = decl_struct_type::request;
     }
-    else if (string_lit_cmp(result.name, STRING_LIT("response")))
+    else if (string_lit_cmp(result.name, STRING_LIT("response_t")))
     {
         result.type = decl_struct_type::response;
     }
@@ -725,13 +745,10 @@ decl_struct fill_struct(tokeniser_t *tokeniser)
               {
                 decl.name = variable.name;
 
-                if (string_lit_cmp(variable.name, STRING_LIT("response")))
+                if (string_lit_cmp(variable.name, STRING_LIT("response")) ||
+                    string_lit_cmp(variable.name, STRING_LIT("request")))
                 {
-                  decl.type = decl_struct_type::response;
-                }
-                else if (string_lit_cmp(variable.name, STRING_LIT("request")))
-                {
-                  decl.type = decl_struct_type::request;
+                  decl.type = decl_struct_type::helper;
                 }
                 else
                 {
@@ -807,7 +824,6 @@ void fprint_curl_json_rpc_param(std::vector<decl_struct const *> *global_helper_
   if (variable->is_array)
   {
     fprintf(stdout, "[");
-    indent_level++;
     var_type = variable->template_expr;
   }
 
@@ -827,8 +843,7 @@ void fprint_curl_json_rpc_param(std::vector<decl_struct const *> *global_helper_
         fprint_curl_json_rpc_param(global_helper_structs, rpc_helper_structs, inner_variable, indent_level);
         if (var_index < (resolved_decl->variables.size() - 1))
         {
-          if (!inner_variable->is_array)
-            fprintf(stdout, ",");
+          fprintf(stdout, ",");
           fprintf(stdout, "\n");
         }
       }
@@ -839,7 +854,7 @@ void fprint_curl_json_rpc_param(std::vector<decl_struct const *> *global_helper_
   }
 
   if (variable->is_array)
-    fprintf(stdout, "],");
+    fprintf(stdout, "]");
 }
 
 void fprint_curl_example(std::vector<decl_struct const *> *global_helper_structs, std::vector<decl_struct const *> *rpc_helper_structs, decl_struct const *request, decl_struct const *response, string_lit const rpc_endpoint)
@@ -848,29 +863,42 @@ void fprint_curl_example(std::vector<decl_struct const *> *global_helper_structs
   // NOTE: Print the Curl Example
   //
 
+
   // fprintf(stdout, "curl -X POST http://127.0.0.1:22023/json_rpc -d '{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"%s\"}' -H 'Content-Type: application/json'")
   fprintf(stdout, "Example Request\n");
   int indent_level = 0;
 
   fprintf(stdout, "curl -X POST http://127.0.0.1:22023");
 
-  bool is_json_rpc = rpc_endpoint.str[0] != '/';
-  if (is_json_rpc) fprintf(stdout, "/json_rpc ");
-  else             fprintf(stdout, "%.*s ", rpc_endpoint.len, rpc_endpoint.str);
+  bool is_json_rpc   = rpc_endpoint.str[0] != '/';
+  bool has_arguments = is_json_rpc || request->variables.size() > 0;
 
-  if (request->variables.size() > 0)
+  if (is_json_rpc) fprintf(stdout, "/json_rpc");
+  else             fprintf(stdout, "%.*s", rpc_endpoint.len, rpc_endpoint.str);
+
+  if (has_arguments)
+    fprintf(stdout, " \\\n");
+
+  fprintf(stdout, "-H 'Content-Type: application/json'");
+  if (has_arguments)
   {
-    fprintf_indented(indent_level, stdout, "-d '\n{\n");
-    indent_level++;
+    fprintf(stdout, " \\\n");
+    fprintf(stdout, "-d @- << EOF\n");
   }
   else
+    fprintf(stdout, "\n");
+
+  if (has_arguments)
   {
-    fprintf_indented(indent_level, stdout, "-d '{ ");
+    indent_level++;
+    fprintf(stdout, "{\n");
   }
 
   if (is_json_rpc)
   {
-    fprintf_indented(indent_level, stdout, "\"jsonrpc\":\"2.0\", \"id\":\"0\", \"method\":\"%.*s\"", rpc_endpoint.len, rpc_endpoint.str);
+    fprintf_indented(indent_level, stdout, "\"jsonrpc\":\"2.0\",\n");
+    fprintf_indented(indent_level, stdout, "\"id\":\"0\",\n");
+    fprintf_indented(indent_level, stdout, "\"method\":\"%.*s\"", rpc_endpoint.len, rpc_endpoint.str);
   }
 
   if (request->variables.size() > 0)
@@ -881,27 +909,12 @@ void fprint_curl_example(std::vector<decl_struct const *> *global_helper_structs
       fprintf_indented(indent_level++, stdout, "\"params\": {\n");
     }
 
-#if 0
-    if (request->variables.size() == 1)
+    for (size_t var_index = 0; var_index < request->variables.size(); ++var_index)
     {
-      decl_var const *variable          = &request->variables[0];
-      decl_var_metadata const *metadata = &variable->metadata;
-
-      if (metadata->example)
-        fprintf(stdout, "%.*s", metadata->example->len, metadata->example->str);
-      else
-        fprintf(stdout, "XX");
-    }
-    else
-#endif
-    {
-      for (size_t var_index = 0; var_index < request->variables.size(); ++var_index)
-      {
-        decl_var const *variable = &request->variables[var_index];
-        fprint_curl_json_rpc_param(global_helper_structs, rpc_helper_structs, variable, indent_level);
-        if (var_index < (request->variables.size() - 1))
-          fprintf(stdout, ",\n");
-      }
+      decl_var const *variable = &request->variables[var_index];
+      fprint_curl_json_rpc_param(global_helper_structs, rpc_helper_structs, variable, indent_level);
+      if (var_index < (request->variables.size() - 1))
+        fprintf(stdout, ",\n");
     }
 
     if (is_json_rpc)
@@ -912,10 +925,13 @@ void fprint_curl_example(std::vector<decl_struct const *> *global_helper_structs
     --indent_level;
   }
 
-  if (request->variables.size() > 0)
-    fprintf(stdout, "\n");
-
-  fprintf(stdout, "}' -H 'Content-Type: application/json'\n\n");
+  if (has_arguments)
+  {
+    fprintf(stdout, "\n}\n");
+    indent_level--;
+    fprintf(stdout, "EOF\n");
+  }
+  fprintf(stdout, "\n");
 
   fprintf(stdout, "Example Response\n");
   if (response->variables.size() > 0)
