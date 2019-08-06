@@ -605,15 +605,19 @@ bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable, string_
     bool member_function = false;
     char *type_decl_start = token.str;
     token_t var_decl = {};
-    for (token_t sub_token = tokeniser_peek_token(tokeniser);; sub_token = tokeniser_peek_token(tokeniser))
+    for (token_t sub_token = tokeniser_peek_token(tokeniser);
+         sub_token.type != token_type::end_of_stream;
+         sub_token = tokeniser_peek_token(tokeniser))
     {
         // Member function decl
-        if (sub_token.type == token_type::open_paren)
+        if (sub_token.type == token_type::open_paren || (token_to_string_lit(sub_token) == STRING_LIT("operator")))
         {
           sub_token       = tokeniser_next_token(tokeniser);
           member_function = true;
 
-          for (sub_token = tokeniser_next_token(tokeniser);; sub_token = tokeniser_next_token(tokeniser))
+          for (sub_token = tokeniser_next_token(tokeniser);
+               sub_token.type != token_type::end_of_stream;
+               sub_token = tokeniser_next_token(tokeniser))
           {
             if (sub_token.type == token_type::semicolon)
               break;
@@ -636,8 +640,8 @@ bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable, string_
 
         if (sub_token.type == token_type::semicolon || sub_token.type == token_type::equal)
         {
-            var_decl = tokeniser_prev_token(tokeniser);
-            break;
+          var_decl = tokeniser_prev_token(tokeniser);
+          break;
         }
         sub_token = tokeniser_next_token(tokeniser);
     }
@@ -718,8 +722,6 @@ decl_struct fill_struct(tokeniser_t *tokeniser)
         result.type = decl_struct_type::helper;
     }
 
-    // if (result.name == STRING_LIT("txpool_stats")) raise(SIGTRAP);
-
     if (!tokeniser_accept_token_if_type(tokeniser, token_type::left_curly_brace, &token))
         return result;
 
@@ -779,25 +781,49 @@ decl_struct const *lookup_type_definition(std::vector<decl_struct const *> *glob
                                           std::vector<decl_struct const *> *rpc_helper_structs,
                                           string_lit const var_type)
 {
-  decl_struct const *result = nullptr;
-  for (decl_struct const *decl : *global_helper_structs)
+  string_lit const *check_type = &var_type;
+  decl_struct const *result    = nullptr;
+  for (int tries = 0; tries < 2; tries++)
   {
-      if (string_lit_cmp(var_type, decl->name))
+    for (decl_struct const *decl : *global_helper_structs)
+    {
+      if (string_lit_cmp(*check_type, decl->name))
       {
         result = decl;
         break;
       }
-  }
+    }
 
-  if (!result)
-  {
-    for (decl_struct const *decl : *rpc_helper_structs)
+    if (!result)
     {
-        if (string_lit_cmp(var_type, decl->name))
+      for (decl_struct const *decl : *rpc_helper_structs)
+      {
+        if (string_lit_cmp(*check_type, decl->name))
         {
           result = decl;
           break;
         }
+      }
+    }
+
+    // TODO(doyle): Hacky workaround for handling cryptonote namespace, just
+    // take the next adjacent namespace afterwards and hope its the only one so
+    // variable -> type declaration can be resolved.
+    if (!result)
+    {
+      string_lit const skip_namespace = STRING_LIT("cryptonote::");
+      if (var_type.len >= skip_namespace.len && strncmp(skip_namespace.str, var_type.str, skip_namespace.len) == 0)
+      {
+        static string_lit var_type_without_cryptonote;
+        var_type_without_cryptonote     = {};
+        var_type_without_cryptonote.len = var_type.len - skip_namespace.len;
+        var_type_without_cryptonote.str = var_type.str + skip_namespace.len;
+        check_type                      = &var_type_without_cryptonote;
+      }
+    }
+    else
+    {
+      break;
     }
   }
 
@@ -970,34 +996,12 @@ void fprint_variable(std::vector<decl_struct const *> *global_helper_structs, st
 
     if (!has_converted_type)
     {
-        decl_struct const *resolved_decl = nullptr;
-        for (decl_struct const *decl : *global_helper_structs)
-        {
-            if (string_lit_cmp(*var_type, decl->name))
-            {
-              resolved_decl = decl;
-              break;
-            }
-        }
-
-        if (!resolved_decl)
-        {
-          for (decl_struct const *decl : *rpc_helper_structs)
-          {
-              if (string_lit_cmp(*var_type, decl->name))
-              {
-                resolved_decl = decl;
-                break;
-              }
-          }
-        }
-
+        decl_struct const *resolved_decl = lookup_type_definition(global_helper_structs, rpc_helper_structs, *var_type);
         if (resolved_decl)
         {
-            ++indent_level;
-            for (decl_var const &inner_variable : resolved_decl->variables)
-                fprint_variable(global_helper_structs, rpc_helper_structs, &inner_variable, indent_level);
-
+          ++indent_level;
+          for (decl_var const &inner_variable : resolved_decl->variables)
+            fprint_variable(global_helper_structs, rpc_helper_structs, &inner_variable, indent_level);
         }
     }
 }
