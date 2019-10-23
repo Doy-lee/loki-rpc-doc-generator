@@ -389,6 +389,26 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
       local_persist string_lit const EXAMPLE   = STRING_LIT("\"all\"");
       result.example                           = &EXAMPLE;
     }
+    else if (variable->name == STRING_LIT("recipient_name"))
+    {
+      local_persist string_lit const EXAMPLE   = STRING_LIT("\"Thor\"");
+      result.example                           = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("password"))
+    {
+      local_persist string_lit const EXAMPLE   = STRING_LIT("\"not_a_secure_password\"");
+      result.example                           = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("msg"))
+    {
+      local_persist string_lit const EXAMPLE   = STRING_LIT("\"Message returned by the sender (wallet/daemon)\"");
+      result.example                           = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("note") || variable->name == STRING_LIT("message") || variable->name == STRING_LIT("tx_description"))
+    {
+      local_persist string_lit const EXAMPLE   = STRING_LIT("\"User assigned note describing something\"");
+      result.example                           = &EXAMPLE;
+    }
 
     if (!result.example)
     {
@@ -459,6 +479,11 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
     else if (variable->name == STRING_LIT("outputs"))
     {
       local_persist string_lit const EXAMPLE = STRING_LIT("10");
+      result.example                         = &EXAMPLE;
+    }
+    else if (variable->name == STRING_LIT("checkpointed"))
+    {
+      local_persist string_lit const EXAMPLE = STRING_LIT("1");
       result.example                         = &EXAMPLE;
     }
     else
