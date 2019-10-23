@@ -688,6 +688,10 @@ bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable, string_
         token = tokeniser_next_token(tokeniser);
     }
 
+    string_lit const skip_marker = STRING_LIT("@NoLokiRPCDocGen");
+    if (variable->comment.len >= skip_marker.len && strncmp(variable->comment.str, skip_marker.str, skip_marker.len) == 0)
+        return false;
+
     return true;
 }
 
