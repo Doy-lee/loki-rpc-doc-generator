@@ -505,7 +505,7 @@ bool fill_struct(tokeniser_t *tokeniser, decl_struct *result)
             }
             else if (string_lit_cmp(token_lit, STRING_LIT("enum")))
             {
-                handled = false;
+                handled = true;
                 tokeniser_advance_until_token(tokeniser, token_type::semicolon);
             }
             else
