@@ -721,50 +721,60 @@ bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable, string_
 }
 
 static string_lit const COMMAND_RPC_PREFIX = STRING_LIT("COMMAND_RPC_");
-decl_struct fill_struct(tokeniser_t *tokeniser)
+bool fill_struct(tokeniser_t *tokeniser, decl_struct *result)
 {
-    decl_struct result = {};
+    // ---------------------------------------------------------------------------------------------
+    //
+    // Classify if struct
+    //
+    // ---------------------------------------------------------------------------------------------
     if (!tokeniser_accept_token_if_identifier(tokeniser, STRING_LIT("struct")))
-        return result;
+        return false;
 
     token_t token = {};
     if (!tokeniser_accept_token_if_type(tokeniser, token_type::identifier, &token))
-        return result;
+        return false;
 
     int original_indent_level = tokeniser->indent_level;
-    result.name               = token_to_string_lit(token);
-    if (result.name.len > COMMAND_RPC_PREFIX.len &&
-        strncmp(result.name.str, COMMAND_RPC_PREFIX.str, COMMAND_RPC_PREFIX.len) == 0)
+    result->name               = token_to_string_lit(token);
+    if (result->name.len > COMMAND_RPC_PREFIX.len &&
+        strncmp(result->name.str, COMMAND_RPC_PREFIX.str, COMMAND_RPC_PREFIX.len) == 0)
     {
-        result.type = decl_struct_type::rpc_command;
+        result->type = decl_struct_type::rpc_command;
     }
-    else if (string_lit_cmp(result.name, STRING_LIT("request_t")))
+    else if (string_lit_cmp(result->name, STRING_LIT("request_t")))
     {
-        result.type = decl_struct_type::request;
+        result->type = decl_struct_type::request;
     }
-    else if (string_lit_cmp(result.name, STRING_LIT("response_t")))
+    else if (string_lit_cmp(result->name, STRING_LIT("response_t")))
     {
-        result.type = decl_struct_type::response;
+        result->type = decl_struct_type::response;
     }
     else
     {
-        result.type = decl_struct_type::helper;
+        result->type = decl_struct_type::helper;
     }
 
     if (!tokeniser_accept_token_if_type(tokeniser, token_type::left_curly_brace, &token))
-        return result;
+        return false;
 
+    // ---------------------------------------------------------------------------------------------
+    //
+    // Parse Struct Contents
+    //
+    // ---------------------------------------------------------------------------------------------
     for (token       = tokeniser_peek_token(tokeniser);
          token.type != token_type::end_of_stream && tokeniser->indent_level != original_indent_level;
          token       = tokeniser_peek_token(tokeniser))
     {
+        bool handled = true;
         if (token.type == token_type::identifier)
         {
             string_lit token_lit = token_to_string_lit(token);
             if (string_lit_cmp(token_lit, STRING_LIT("struct")))
             {
-                decl_struct decl = fill_struct(tokeniser);
-                result.inner_structs.push_back(decl);
+                decl_struct decl = {};
+                if (fill_struct(tokeniser, &decl)) result->inner_structs.push_back(std::move(decl));
                 continue;
             }
             else if (string_lit_cmp(token_lit, STRING_LIT("typedef")))
@@ -772,7 +782,7 @@ decl_struct fill_struct(tokeniser_t *tokeniser)
               token = tokeniser_next_token(tokeniser);
               decl_struct decl = {};
               decl_var variable = {};
-              if (parse_type_and_var_decl(tokeniser, &variable, &result.name))
+              if (parse_type_and_var_decl(tokeniser, &variable, &result->name))
               {
                 decl.name = variable.name;
 
@@ -787,23 +797,78 @@ decl_struct fill_struct(tokeniser_t *tokeniser)
                 }
 
                 decl.variables.push_back(variable);
-                result.inner_structs.push_back(decl);
+                result->inner_structs.push_back(decl);
               }
+            }
+            else if (string_lit_cmp(token_lit, STRING_LIT("static")))
+            {
+                auto tokeniser_copy = tokeniser; // a way to reverse state if the following stream is not what we expect
+                token = tokeniser_next_token(tokeniser, 2);
+                bool matched = false;
+                if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("constexpr")))
+                {
+                    token = tokeniser_next_token(tokeniser, 1);
+                    if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("const")))
+                    {
+                        token = tokeniser_next_token(tokeniser, 1);
+                        if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("char")))
+                        {
+                            token = tokeniser_next_token(tokeniser, 1);
+                            if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("*")))
+                            {
+                                token = tokeniser_next_token(tokeniser, 1);
+                                if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("description")))
+                                {
+                                    token = tokeniser_next_token(tokeniser, 1);
+                                    if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("=")))
+                                    {
+                                        token = tokeniser_next_token(tokeniser, 1);
+                                        if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("R")))
+                                        {
+                                            token = tokeniser_next_token(tokeniser, 1);
+                                            if (token.type == token_type::string)
+                                            {
+                                                // NOTE: Raw c-string literal, we have enclosing brackets.
+                                                token.len -= 2;
+                                                token.str += 1;
+                                                result->description = token_to_string_lit(token);
+                                                matched            = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!matched)
+                {
+                    tokeniser = tokeniser_copy;
+                    tokeniser_next_token(tokeniser);
+                }
             }
             else
             {
                 decl_var variable = {};
-                if (parse_type_and_var_decl(tokeniser, &variable, &result.name))
-                  result.variables.push_back(variable);
+                if (parse_type_and_var_decl(tokeniser, &variable, &result->name))
+                  result->variables.push_back(variable);
+                else
+                  handled = false;
             }
         }
         else
+        {
+            handled = false;
+        }
+
+        if (!handled)
         {
             token = tokeniser_next_token(tokeniser);
         }
     }
 
-    return result;
+    return true;
 }
 
 decl_struct const *lookup_type_definition(std::vector<decl_struct const *> *global_helper_structs,
@@ -870,7 +935,177 @@ void fprintf_indented(int indent_level, FILE *dest, char const *fmt...)
   va_end(va);
 }
 
-void fprint_curl_json_rpc_param(std::vector<decl_struct const *> *global_helper_structs, std::vector<decl_struct const *> *rpc_helper_structs, decl_var const *variable, int indent_level)
+struct decl_struct_hierarchy
+{
+    decl_struct const *children[16];
+    int                children_index;
+};
+
+static void fprint_variable_example(decl_struct_hierarchy const *hierarchy, string_lit var_type, decl_var const *variable)
+{
+  string_lit var_name = variable->name;
+  // -----------------------------------------------------------------------------------------------
+  //
+  // Specialised Type Handling
+  //
+  // -----------------------------------------------------------------------------------------------
+#define PRINT_AND_RETURN(str) do { fprintf(stdout, str); return; } while(0)
+  bool specialised_handling = false;
+  if (hierarchy->children_index > 0)
+  {
+      decl_struct const *root = hierarchy->children[0];
+      string_lit alias   = root->aliases[0];
+      if (alias == STRING_LIT("lns_buy_mapping") ||
+          alias == STRING_LIT("lns_update_mapping") ||
+          alias == STRING_LIT("lns_make_update_mapping_signature"))
+      {
+          if (var_name == STRING_LIT("type"))  PRINT_AND_RETURN("session");
+          if (var_name == STRING_LIT("name"))  PRINT_AND_RETURN("\"My_Lns_Name\"");
+          if (var_name == STRING_LIT("value")) PRINT_AND_RETURN("\"059f5a1ac2d04d0c09daa21b08699e8e2e0fd8d6fbe119207e5f241043cf77c30d\"");
+      }
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  //
+  // Handle any type that didn't need special handling
+  //
+  // -----------------------------------------------------------------------------------------------
+  if (var_type == STRING_LIT("std::string"))
+  {
+    if (var_name ==  STRING_LIT("operator_cut"))
+    {
+      auto string = STRING_LIT("\"1.1%\"");
+      fprintf(stdout, "%.*s", string.len, string.str);
+      return;
+    }
+
+    if (var_name == STRING_LIT("destination"))                   PRINT_AND_RETURN("\"L8ssYFtxi1HTFQdbmG9Lt71tyudgageDgBqBLcgLnw5XBiJ1NQLFYNAAfYpYS3jHaSe8UsFYjSgKadKhC7edTSQB15s6T7g\"");
+    if (var_name == STRING_LIT("owner"))                         PRINT_AND_RETURN("\"L8ssYFtxi1HTFQdbmG9Lt71tyudgageDgBqBLcgLnw5XBiJ1NQLFYNAAfYpYS3jHaSe8UsFYjSgKadKhC7edTSQB15s6T7g\"");
+    if (var_name == STRING_LIT("backup_owner"))                  PRINT_AND_RETURN("\"L8PYYYTh6yEewvuPmF75uhjDn9fBzKXp8CeMuwKNZBvZT8wAoe9hJ4favnZMvTTkNdT56DMNDcdWyheb3icfk4MS3udsP4R\"");
+    if (var_name == STRING_LIT("wallet_address") ||
+        var_name == STRING_LIT("miner_address") ||
+        var_name == STRING_LIT("change_address") ||
+        var_name == STRING_LIT("operator_address") ||
+        var_name == STRING_LIT("base_address") ||
+        var_name == STRING_LIT("address"))                       PRINT_AND_RETURN("\"L8KJf3nRQ53NTX1YLjtHryjegFRa3ZCEGLKmRxUfvkBWK19UteEacVpYqpYscSJ2q8WRuHPFdk7Q5W8pQB7Py5kvUs8vKSk\"");
+    if (var_name == STRING_LIT("hash") ||
+        var_name == STRING_LIT("top_block_hash") ||
+        var_name == STRING_LIT("pow_hash") ||
+        var_name == STRING_LIT("block_hash") ||
+        var_name == STRING_LIT("block_hashes") ||
+        var_name == STRING_LIT("main_chain_parent_block") ||
+        var_name == STRING_LIT("id_hash") ||
+        var_name == STRING_LIT("last_failed_id_hash") ||
+        var_name == STRING_LIT("max_used_block_id_hash") ||
+        var_name == STRING_LIT("miner_tx_hash") ||
+        var_name == STRING_LIT("blks_hashes") ||
+        var_name == STRING_LIT("prev_hash"))                     PRINT_AND_RETURN("\"bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70\"");
+
+      // TODO(doyle): Some examples need 32 byte payment ids
+    if (var_name ==  STRING_LIT("payment_id"))                   PRINT_AND_RETURN("\"f378710e54eeeb8d\"");
+    if (var_name == STRING_LIT("txids") ||
+        var_name == STRING_LIT("tx_hashes") ||
+        var_name == STRING_LIT("tx_hash_list") ||
+        var_name == STRING_LIT("txs_hashes") ||
+        var_name == STRING_LIT("missed_tx") ||
+        var_name == STRING_LIT("tx_hash") ||
+        var_name == STRING_LIT("prunable_hash") ||
+        var_name == STRING_LIT("txid"))                          PRINT_AND_RETURN("\"b603cab7e3b9fe1f6d322e3167cd26e1e61c764afa9d733233ef716787786123\"");
+    if (var_name == STRING_LIT("tx_key") ||
+        var_name == STRING_LIT("tx_key_list"))                   PRINT_AND_RETURN("\"1982e99c69d8acc993cfc94ce59ff8f113d23482d9a25c892a3fc01c77dd8c4c\"");
+    if (var_name == STRING_LIT("tx_blob") ||
+        var_name == STRING_LIT("tx_blob_list"))                  PRINT_AND_RETURN("\"0402f78b05f78b05f78b0501ffd98b0502b888ddcf730229f056f5594cfcfd8d44f8033c9fda22450693d1694038e1cecaaaac25a8fc12af8992bc800102534df00c14ead3b3dedea9e7bdcf71c44803349b5e9aee2f73e22d5385ac147b7601008e5729d9329320444666d9d9d9dc602a3ae585de91ab2ca125665e3a363610021100000001839fdb0000000000000000000001200408d5ad7ab79d9b05c94033c2029f4902a98ec51f5175564f6978467dbb28723f929cf806d4ee1c781d7771183a93a1fd74f0827bddee9baac7e3083ab2b5840000\"");
+    if (var_name == STRING_LIT("service_node_pubkey") ||
+        var_name == STRING_LIT("quorum_nodes") ||
+        var_name == STRING_LIT("validators") ||
+        var_name == STRING_LIT("workers") ||
+        var_name == STRING_LIT("service_node_key") ||
+        var_name == STRING_LIT("nodes_to_test") ||
+        var_name == STRING_LIT("service_node_pubkeys"))          PRINT_AND_RETURN("\"4a8c30cea9e729b06c91132295cce32d2a8e6e5bcf7b74a998e2ee1b3ed590b3\"");
+
+    if (var_name == STRING_LIT("key_image") ||
+        var_name == STRING_LIT("key_images"))                    PRINT_AND_RETURN("\"8d1bd8181bf7d857bdb281e0153d84cd55a3fcaa57c3e570f4a49f935850b5e3\"");
+    if (var_name == STRING_LIT("bootstrap_daemon_address") ||
+        var_name == STRING_LIT("remote_address"))                PRINT_AND_RETURN("\"127.0.0.1:22023\"");
+    if (var_name == STRING_LIT("key_image_pub_key"))             PRINT_AND_RETURN("\"b1b696dd0a0d1815e341d9fed85708703c57b5d553a3615bcf4a06a36fa4bc38\"");
+    if (var_name == STRING_LIT("connection_id"))                 PRINT_AND_RETURN("\"083c301a3030329a487adb12ad981d2c\"");
+    if (var_name == STRING_LIT("nettype"))                       PRINT_AND_RETURN("\"MAINNET\"");
+    if (var_name == STRING_LIT("status"))                        PRINT_AND_RETURN("\"OK\"");
+    if (var_name == STRING_LIT("host"))                          PRINT_AND_RETURN("\"127.0.0.1\"");
+    if (var_name == STRING_LIT("public_ip"))                     PRINT_AND_RETURN("\"8.8.8.8\"");
+    if (var_name == STRING_LIT("extra"))                         PRINT_AND_RETURN("\"01008e5729d9329320444666d9d9d9dc602a3ae585de91ab2ca125665e3a363610021100000001839fdb0000000000000000000001200408d5ad7ab79d9b05c94033c2029f4902a98ec51f5175564f6978467dbb28723f929cf806d4ee1c781d7771183a93a1fd74f0827bddee9baac7e3083ab2b584\"");
+    if (var_name == STRING_LIT("peer_id"))                       PRINT_AND_RETURN("\"c959fbfbed9e44fb\"");
+    if (var_name == STRING_LIT("port"))                          PRINT_AND_RETURN("\"62950\"");
+    if (var_name == STRING_LIT("registration_cmd"))              PRINT_AND_RETURN("\"register_service_node 18446744073709551612 L8KJf3nRQ53NTX1YLjtHryjegFRa3ZCEGLKmRxUfvkBWK19UteEacVpYqpYscSJ2q8WRuHPFdk7Q5W8pQB7Py5kvUs8vKSk 18446744073709551612 1555894565 f90424b23c7969bb2f0191bca45e6433a59b0b37039a5e38a2ba8cc7ea1075a3 ba24e4bfb4af0f5f9f74e35f1a5685dc9250ee83f62a9ee8964c9a689cceb40b4f125c83d0cbb434e56712d0300e5a23fd37a5b60cddbcd94e2d578209532a0d\"");
+    if (var_name == STRING_LIT("tag"))                           PRINT_AND_RETURN("\"My tag\"");
+    if (var_name == STRING_LIT("label"))                         PRINT_AND_RETURN("\"My label\"");
+    if (var_name == STRING_LIT("description"))                   PRINT_AND_RETURN("\"My account description\"");
+    if (var_name == STRING_LIT("transfer_type"))                 PRINT_AND_RETURN("\"all\"");
+    if (var_name == STRING_LIT("recipient_name"))                PRINT_AND_RETURN("\"Thor\"");
+    if (var_name == STRING_LIT("password"))                      PRINT_AND_RETURN("\"not_a_secure_password\"");
+    if (var_name == STRING_LIT("msg"))                           PRINT_AND_RETURN("\"Message returned by the sender (wallet/daemon)\"");
+    if (var_name == STRING_LIT("note") ||
+        var_name == STRING_LIT("message") ||
+        var_name == STRING_LIT("tx_description"))                PRINT_AND_RETURN("\"User assigned note describing something\"");
+  }
+  else if (var_type == STRING_LIT("uint64_t"))
+  {
+    if (var_name == STRING_LIT("staking_requirement"))           PRINT_AND_RETURN("100000000000");
+    if (var_name == STRING_LIT("height") ||
+        var_name == STRING_LIT("registration_height") ||
+        var_name == STRING_LIT("last_reward_block_height"))      PRINT_AND_RETURN("234767");
+    if (var_name == STRING_LIT("amount"))                        PRINT_AND_RETURN("26734261552878");
+    if (var_name == STRING_LIT("request_unlock_height"))         PRINT_AND_RETURN("251123");
+    if (var_name == STRING_LIT("last_reward_transaction_index")) PRINT_AND_RETURN("0");
+    if (var_name == STRING_LIT("portions_for_operator"))         PRINT_AND_RETURN("18446744073709551612");
+    if (var_name == STRING_LIT("last_seen"))                     PRINT_AND_RETURN("1554685440");
+    if (var_name == STRING_LIT("filename"))                      PRINT_AND_RETURN("wallet");
+    if (var_name == STRING_LIT("password"))                      PRINT_AND_RETURN("password");
+    if (var_name == STRING_LIT("language"))                      PRINT_AND_RETURN("English");
+    if (var_name == STRING_LIT("ring_size"))                     PRINT_AND_RETURN("10");
+    if (var_name == STRING_LIT("outputs"))                       PRINT_AND_RETURN("10");
+    if (var_name == STRING_LIT("checkpointed"))                  PRINT_AND_RETURN("1");
+    else                                                         PRINT_AND_RETURN("123");
+  }
+  if (var_type == STRING_LIT("uint32_t"))
+  {
+    if (var_name == STRING_LIT("threads_count"))                 PRINT_AND_RETURN("8");
+    if (var_name == STRING_LIT("account_index"))                 PRINT_AND_RETURN("0");
+    if (var_name == STRING_LIT("address_indices"))               PRINT_AND_RETURN("0");
+    if (var_name == STRING_LIT("address_index"))                 PRINT_AND_RETURN("0");
+    if (var_name == STRING_LIT("subaddr_indices"))               PRINT_AND_RETURN("0");
+    if (var_name == STRING_LIT("priority"))                      PRINT_AND_RETURN("0");
+    else                                                         PRINT_AND_RETURN("2130706433");
+  }
+  if (var_type == STRING_LIT("uint16_t"))
+  {
+    if (var_name == STRING_LIT("service_node_version"))          PRINT_AND_RETURN("4, 0, 3");
+    else                                                         PRINT_AND_RETURN("12345");
+  }
+  if (var_type == STRING_LIT("int8_t"))                          PRINT_AND_RETURN("8");
+  if (var_type == STRING_LIT("int"))
+  {
+    if (var_name == STRING_LIT("spent_status"))                  PRINT_AND_RETURN("0, 1");
+    else                                                         PRINT_AND_RETURN("12345");
+  }
+  if (var_type == STRING_LIT("blobdata"))                        PRINT_AND_RETURN("\"sd2b5f838e8cc7774d92f5a6ce0d72cb9bd8db2ef28948087f8a50ff46d188dd9\"");
+  if (var_type == STRING_LIT("bool"))
+  {
+    if (var_name == STRING_LIT("untrusted"))                     PRINT_AND_RETURN("false");
+    else                                                         PRINT_AND_RETURN("true");
+  }
+  if (var_type == STRING_LIT("crypto::hash"))                    PRINT_AND_RETURN("\"bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70\"");
+  if (var_type == STRING_LIT("difficulty_type"))                 PRINT_AND_RETURN("25179406071");
+
+  PRINT_AND_RETURN("\"TODO(loki): Write example string\"");
+#undef PRINT_AND_RETURN
+}
+
+void fprint_curl_json_rpc_param(std::vector<decl_struct const *> *global_helper_structs,
+                                std::vector<decl_struct const *> *rpc_helper_structs,
+                                decl_struct_hierarchy const *hierarchy,
+                                decl_var const *variable,
+                                int indent_level)
 {
   decl_var_metadata const *metadata = &variable->metadata;
   fprintf_indented(indent_level, stdout, "\"%.*s\": ", variable->name.len, variable->name.str);
@@ -882,6 +1117,7 @@ void fprint_curl_json_rpc_param(std::vector<decl_struct const *> *global_helper_
     var_type = variable->template_expr;
   }
 
+#if 0
   if (metadata->example)
   {
     fprintf(stdout, "%.*s", metadata->example->len, metadata->example->str);
@@ -907,12 +1143,38 @@ void fprint_curl_json_rpc_param(std::vector<decl_struct const *> *global_helper_
       fprintf_indented(--indent_level, stdout, "}");
     }
   }
+#else
+  if (decl_struct const *resolved_decl = lookup_type_definition(global_helper_structs, rpc_helper_structs, var_type))
+  {
+    fprintf(stdout, "{\n");
+    indent_level++;
+    decl_struct_hierarchy sub_hierarchy                    = *hierarchy;
+    sub_hierarchy.children[sub_hierarchy.children_index++] = resolved_decl;
+    for (size_t var_index = 0; var_index < resolved_decl->variables.size(); ++var_index)
+    {
+      decl_var const *inner_variable = &resolved_decl->variables[var_index];
+      fprint_curl_json_rpc_param(global_helper_structs, rpc_helper_structs, &sub_hierarchy, inner_variable, indent_level);
+      if (var_index < (resolved_decl->variables.size() - 1))
+      {
+        fprintf(stdout, ",");
+        fprintf(stdout, "\n");
+      }
+    }
+
+    fprintf(stdout, "\n");
+    fprintf_indented(--indent_level, stdout, "}");
+  }
+  else
+  {
+    fprint_variable_example(hierarchy, var_type, variable);
+  }
+#endif
 
   if (variable->is_array)
     fprintf(stdout, "]");
 }
 
-void fprint_curl_example(std::vector<decl_struct const *> *global_helper_structs, std::vector<decl_struct const *> *rpc_helper_structs, decl_struct const *request, decl_struct const *response, string_lit const rpc_endpoint)
+void fprint_curl_example(std::vector<decl_struct const *> *global_helper_structs, std::vector<decl_struct const *> *rpc_helper_structs, decl_struct_hierarchy const *hierarchy, decl_struct const *request, decl_struct const *response, string_lit const rpc_endpoint)
 {
   //
   // NOTE: Print the Curl Example
@@ -933,6 +1195,8 @@ void fprint_curl_example(std::vector<decl_struct const *> *global_helper_structs
 
   if (has_arguments)
     fprintf(stdout, " \\\n");
+  else
+    fprintf(stdout, " ");
 
   fprintf(stdout, "-H 'Content-Type: application/json'");
   if (has_arguments)
@@ -956,6 +1220,7 @@ void fprint_curl_example(std::vector<decl_struct const *> *global_helper_structs
     fprintf_indented(indent_level, stdout, "\"method\":\"%.*s\"", rpc_endpoint.len, rpc_endpoint.str);
   }
 
+
   if (request->variables.size() > 0)
   {
     if (is_json_rpc)
@@ -964,10 +1229,12 @@ void fprint_curl_example(std::vector<decl_struct const *> *global_helper_structs
       fprintf_indented(indent_level++, stdout, "\"params\": {\n");
     }
 
+    decl_struct_hierarchy sub_hierarchy                    = *hierarchy;
+    sub_hierarchy.children[sub_hierarchy.children_index++] = request;
     for (size_t var_index = 0; var_index < request->variables.size(); ++var_index)
     {
       decl_var const *variable = &request->variables[var_index];
-      fprint_curl_json_rpc_param(global_helper_structs, rpc_helper_structs, variable, indent_level);
+      fprint_curl_json_rpc_param(global_helper_structs, rpc_helper_structs, &sub_hierarchy, variable, indent_level);
       if (var_index < (request->variables.size() - 1))
         fprintf(stdout, ",\n");
     }
@@ -992,10 +1259,12 @@ void fprint_curl_example(std::vector<decl_struct const *> *global_helper_structs
   if (response->variables.size() > 0)
   {
     fprintf(stdout, "{\n");
+    decl_struct_hierarchy sub_hierarchy                    = *hierarchy;
+    sub_hierarchy.children[sub_hierarchy.children_index++] = response;
     for (size_t var_index = 0; var_index < response->variables.size(); ++var_index)
     {
       decl_var const *variable = &response->variables[var_index];
-      fprint_curl_json_rpc_param(global_helper_structs, rpc_helper_structs, variable, 1 /*indent_level*/);
+      fprint_curl_json_rpc_param(global_helper_structs, rpc_helper_structs, &sub_hierarchy, variable, 1 /*indent_level*/);
       if (var_index < (response->variables.size() - 1))
         fprintf(stdout, ",\n");
     }
@@ -1055,7 +1324,7 @@ void fprint_string_and_escape_with_backslash(FILE *file, string_lit const *strin
   }
 }
 
-void generate_markdown(std::vector<decl_struct_wrapper> const *declarations)
+void generate_markdown(std::vector<decl_struct> const *declarations)
 {
     time_t now;
     time(&now);
@@ -1069,9 +1338,8 @@ void generate_markdown(std::vector<decl_struct_wrapper> const *declarations)
            "## RPC Methods\n\n",
            (1900 + gmtime_result->tm_year), (gmtime_result->tm_mon + 1), gmtime_result->tm_mday);
 
-    for (decl_struct_wrapper const &wrapper : (*declarations))
+    for (decl_struct const &decl : (*declarations))
     {
-        decl_struct const &decl = wrapper.decl;
         if (decl.type == decl_struct_type::rpc_command)
         {
             fputs(" - [", stdout);
@@ -1095,9 +1363,8 @@ void generate_markdown(std::vector<decl_struct_wrapper> const *declarations)
     std::vector<decl_struct const *> global_helper_structs;
     std::vector<decl_struct const *> rpc_helper_structs;
 
-    for (decl_struct_wrapper const &wrapper : (*declarations))
+    for (decl_struct const &global_decl : (*declarations))
     {
-        decl_struct const &global_decl = wrapper.decl;
         if (global_decl.type == decl_struct_type::invalid)
         {
             continue;
@@ -1143,26 +1410,29 @@ void generate_markdown(std::vector<decl_struct_wrapper> const *declarations)
 #endif
         fputs("\n\n", stdout);
 
-        if (wrapper.aliases.size() > 0 || wrapper.pre_decl_comments.size())
+        if (global_decl.aliases.size() > 0 || global_decl.pre_decl_comments.size() || global_decl.description.len > 0)
         {
             fprintf(stdout, "```\n");
-            if (wrapper.pre_decl_comments.size() > 0)
+            if (global_decl.pre_decl_comments.size() > 0)
             {
-              for (string_lit const &comment : wrapper.pre_decl_comments)
+              for (string_lit const &comment : global_decl.pre_decl_comments)
                 fprintf(stdout, "%.*s\n", comment.len, comment.str);
             }
             fprintf(stdout, "\n");
+            if (global_decl.description.len > 0)
+                fprintf(stdout, "%.*s\n", global_decl.description.len, global_decl.description.str);
+            fprintf(stdout, "\n");
 
-            if (wrapper.aliases.size() > 0)
+            if (global_decl.aliases.size() > 0)
             {
               fprintf(stdout, "Endpoints: ");
 
-              string_lit const *main_alias = &wrapper.aliases[0];
-              for(int i = 0; i < wrapper.aliases.size(); i++)
+              string_lit const *main_alias = &global_decl.aliases[0];
+              for(int i = 0; i < global_decl.aliases.size(); i++)
               {
-                string_lit const &alias = wrapper.aliases[i];
+                string_lit const &alias = global_decl.aliases[i];
                 fprintf(stdout, "%.*s", alias.len, alias.str);
-                if (i < (wrapper.aliases.size() - 1))
+                if (i < (global_decl.aliases.size() - 1))
                   fprintf(stdout, ", ");
 
                 // NOTE: Prefer aliases that don't start with a forward slash, i.e. these are the aliases for json RPC calls
@@ -1171,10 +1441,12 @@ void generate_markdown(std::vector<decl_struct_wrapper> const *declarations)
               }
               fprintf(stdout, "\n");
 
-              if (wrapper.pre_decl_comments.size() > 0)
+              if (global_decl.pre_decl_comments.size() > 0 || global_decl.description.len > 0)
                 fprintf(stdout, "\n");
 
-              fprint_curl_example(&global_helper_structs, &rpc_helper_structs, request, response, *main_alias);
+              decl_struct_hierarchy hierarchy                = {};
+              hierarchy.children[hierarchy.children_index++] = &global_decl;
+              fprint_curl_example(&global_helper_structs, &rpc_helper_structs, &hierarchy, request, response, *main_alias);
             }
 
             fprintf(stdout, "```\n");
@@ -1206,7 +1478,7 @@ char *next_token(char *src)
 
 int main(int argc, char *argv[])
 {
-    std::vector<decl_struct_wrapper> declarations;
+    std::vector<decl_struct> declarations;
     declarations.reserve(128);
 
     struct name_to_alias
@@ -1289,6 +1561,7 @@ int main(int argc, char *argv[])
                       case '(': curr_token.type = token_type::open_paren; break;
                       case ')': curr_token.type = token_type::close_paren; break;
                       case ',': curr_token.type = token_type::comma; break;
+                      case '*': curr_token.type = token_type::asterisks; break;
 
                       case '"':
                       {
@@ -1420,12 +1693,12 @@ int main(int argc, char *argv[])
         // Parse lexed tokens into declarations
         //
         {
-            decl_struct_wrapper struct_wrapper = {};
+            decl_struct decl      = {};
             tokeniser_t tokeniser = {};
-            tokeniser.tokens   = token_list.data();
+            tokeniser.tokens      = token_list.data();
             for (token_t token = tokeniser_peek_token(&tokeniser);
                  token.type   != token_type::end_of_stream;
-                 token         = tokeniser_peek_token(&tokeniser), struct_wrapper.pre_decl_comments.clear())
+                 token         = tokeniser_peek_token(&tokeniser), decl.pre_decl_comments.clear())
             {
                 if (token.type == token_type::end_of_stream)
                     break;
@@ -1437,7 +1710,7 @@ int main(int argc, char *argv[])
                   for (token = tokeniser_peek_token(&tokeniser); token.type == token_type::comment; token = tokeniser_peek_token(&tokeniser))
                   {
                     string_lit comment_lit = token_to_string_lit(token);
-                    struct_wrapper.pre_decl_comments.push_back(comment_lit);
+                    decl.pre_decl_comments.push_back(comment_lit);
                     token = tokeniser_next_token(&tokeniser);
                   }
 
@@ -1446,9 +1719,11 @@ int main(int argc, char *argv[])
                       string_lit token_lit = token_to_string_lit(token);
                       if (token_lit == STRING_LIT("struct"))
                       {
-                          struct_wrapper.decl = fill_struct(&tokeniser);
-                          declarations.push_back(struct_wrapper);
-                          handled = true;
+                          if (fill_struct(&tokeniser, &decl))
+                          {
+                              declarations.push_back(std::move(decl));
+                              handled = true;
+                          }
                       }
                       else if (token_lit == STRING_LIT("enum"))
                       {
@@ -1498,11 +1773,11 @@ int main(int argc, char *argv[])
     //
     for (name_to_alias &name_alias : struct_rpc_aliases)
     {
-        for(decl_struct_wrapper &decl_wrapper : declarations)
+        for(decl_struct &decl : declarations)
         {
-            if (string_lit_cmp(decl_wrapper.decl.name, name_alias.name))
+            if (string_lit_cmp(decl.name, name_alias.name))
             {
-                decl_wrapper.aliases.push_back(name_alias.alias);
+                decl.aliases.push_back(name_alias.alias);
                 break;
             }
         }

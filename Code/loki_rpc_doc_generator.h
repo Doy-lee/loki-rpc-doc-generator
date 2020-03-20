@@ -72,6 +72,7 @@ enum struct token_type
     greater_than,
     equal,
     string,
+    asterisks,
 
     introspect_marker,
     json_rpc_marker,
@@ -129,7 +130,11 @@ enum decl_struct_type
 
 struct decl_struct
 {
+  std::vector<string_lit>  aliases;
+  std::vector<string_lit>  pre_decl_comments;
+
   decl_struct_type         type;
+  string_lit               description;
   string_lit               name;
   std::vector<decl_struct> inner_structs;
   std::vector<decl_var>    variables;
