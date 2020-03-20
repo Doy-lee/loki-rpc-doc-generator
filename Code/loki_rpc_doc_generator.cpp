@@ -244,11 +244,35 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable)
   {
     local_persist string_lit const NICE_NAME = STRING_LIT("uint32");
     result.converted_type                    = &NICE_NAME;
-
   }
   else if (var_type == STRING_LIT("uint16_t"))
   {
     local_persist string_lit const NICE_NAME = STRING_LIT("uint16");
+    result.converted_type = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("uint8_t"))
+  {
+    local_persist string_lit const NICE_NAME = STRING_LIT("uint8");
+    result.converted_type = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("int64_t"))
+  {
+    local_persist string_lit const NICE_NAME = STRING_LIT("int64");
+    result.converted_type                    = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("int32_t"))
+  {
+    local_persist string_lit const NICE_NAME = STRING_LIT("int32");
+    result.converted_type                    = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("int16_t"))
+  {
+    local_persist string_lit const NICE_NAME = STRING_LIT("int16");
+    result.converted_type = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("int8_t"))
+  {
+    local_persist string_lit const NICE_NAME = STRING_LIT("int8");
     result.converted_type = &NICE_NAME;
   }
   else if (var_type == STRING_LIT("blobdata"))
@@ -269,11 +293,12 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable)
   return result;
 };
 
-bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable, string_lit const *parent_type = nullptr)
+bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable)
 {
     token_t token = tokeniser_peek_token(tokeniser);
 
-    bool member_function = false;
+    bool member_function  = false;
+    char *var_value_start = nullptr;
     char *type_decl_start = token.str;
     token_t var_decl = {};
     for (token_t sub_token = tokeniser_peek_token(tokeniser);
@@ -309,10 +334,17 @@ bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable, string_
         if (member_function)
           break;
 
-        if (sub_token.type == token_type::semicolon || sub_token.type == token_type::equal)
+        if (sub_token.type == token_type::equal)
         {
-          var_decl = tokeniser_prev_token(tokeniser);
-          break;
+            var_decl = tokeniser_prev_token(tokeniser);
+            tokeniser_next_token(tokeniser);
+            var_value_start = tokeniser_peek_token(tokeniser).str;
+        }
+        else if (sub_token.type == token_type::semicolon)
+        {
+            // NOTE: Maybe already resolved if there was an equals earlier (assignment)
+            if (var_decl.len == 0) var_decl = tokeniser_prev_token(tokeniser);
+            break;
         }
         sub_token = tokeniser_next_token(tokeniser);
     }
@@ -320,11 +352,11 @@ bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable, string_
     if (member_function)
       return false;
 
-    char *type_decl_end = var_decl.str - 1;
-    variable->type.str   = type_decl_start;
-    variable->type.len   = static_cast<int>(type_decl_end - type_decl_start);
-    variable->name       = token_to_string_lit(var_decl);
-    variable->type       = trim_whitespace_around(variable->type);
+    char const *type_decl_end = var_decl.str - 1;
+    variable->type.str  = type_decl_start;
+    variable->type.len  = static_cast<int>(type_decl_end - type_decl_start);
+    variable->name      = token_to_string_lit(var_decl);
+    variable->type      = trim_whitespace_around(variable->type);
     for (int i = 0; i < variable->type.len; ++i)
     {
         if (variable->type.str[i] == '<')
@@ -350,7 +382,15 @@ bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable, string_
 
     token = tokeniser_next_token(tokeniser);
     if (token.type != token_type::semicolon)
+    {
        token = tokeniser_advance_until_token(tokeniser, token_type::semicolon);
+    }
+
+    if (var_value_start)
+    {
+        variable->value.str = var_value_start;
+        variable->value.len = token.str - var_value_start;
+    }
 
     token = tokeniser_peek_token(tokeniser);
     if (token.type == token_type::comment)
@@ -364,6 +404,23 @@ bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable, string_
         return false;
 
     return true;
+}
+
+
+static bool ignore_var_modifier(token_t token)
+{
+    static string_lit const modifiers[] = {
+        STRING_LIT("constexpr"),
+        STRING_LIT("const"),
+        STRING_LIT("static"),
+    };
+
+    for (string_lit const &mod : modifiers)
+    {
+        if (token_to_string_lit(token) == mod) return true;
+  }
+
+  return false;
 }
 
 static string_lit const COMMAND_RPC_PREFIX = STRING_LIT("COMMAND_RPC_");
@@ -388,11 +445,11 @@ bool fill_struct(tokeniser_t *tokeniser, decl_struct *result)
     {
         result->type = decl_struct_type::rpc_command;
     }
-    else if (string_lit_cmp(result->name, STRING_LIT("request_t")))
+    else if (result->name == STRING_LIT("request_t") || result->name == STRING_LIT("request"))
     {
         result->type = decl_struct_type::request;
     }
-    else if (string_lit_cmp(result->name, STRING_LIT("response_t")))
+    else if (result->name == STRING_LIT("response_t") || result->name == STRING_LIT("response"))
     {
         result->type = decl_struct_type::response;
     }
@@ -428,7 +485,7 @@ bool fill_struct(tokeniser_t *tokeniser, decl_struct *result)
               token = tokeniser_next_token(tokeniser);
               decl_struct decl = {};
               decl_var variable = {};
-              if (parse_type_and_var_decl(tokeniser, &variable, &result->name))
+              if (parse_type_and_var_decl(tokeniser, &variable))
               {
                 decl.name = variable.name;
 
@@ -446,61 +503,62 @@ bool fill_struct(tokeniser_t *tokeniser, decl_struct *result)
                 result->inner_structs.push_back(decl);
               }
             }
-            else if (string_lit_cmp(token_lit, STRING_LIT("static")))
+            else if (string_lit_cmp(token_lit, STRING_LIT("enum")))
             {
-                auto tokeniser_copy = tokeniser; // a way to reverse state if the following stream is not what we expect
-                token = tokeniser_next_token(tokeniser, 2);
-                bool matched = false;
-                if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("constexpr")))
-                {
-                    token = tokeniser_next_token(tokeniser, 1);
-                    if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("const")))
-                    {
-                        token = tokeniser_next_token(tokeniser, 1);
-                        if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("char")))
-                        {
-                            token = tokeniser_next_token(tokeniser, 1);
-                            if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("*")))
-                            {
-                                token = tokeniser_next_token(tokeniser, 1);
-                                if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("description")))
-                                {
-                                    token = tokeniser_next_token(tokeniser, 1);
-                                    if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("=")))
-                                    {
-                                        token = tokeniser_next_token(tokeniser, 1);
-                                        if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("R")))
-                                        {
-                                            token = tokeniser_next_token(tokeniser, 1);
-                                            if (token.type == token_type::string)
-                                            {
-                                                // NOTE: Raw c-string literal, we have enclosing brackets.
-                                                token.len -= 2;
-                                                token.str += 1;
-                                                result->description = token_to_string_lit(token);
-                                                matched            = true;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (!matched)
-                {
-                    tokeniser = tokeniser_copy;
-                    tokeniser_next_token(tokeniser);
-                }
+                handled = false;
+                tokeniser_advance_until_token(tokeniser, token_type::semicolon);
             }
             else
             {
+#if 0
+              if (result->name == STRING_LIT("COMMAND_RPC_LNS_NAMES_TO_OWNERS"))
+                  raise(SIGTRAP);
+#endif
+
+              tokeniser_t tokeniser_copy = *tokeniser; // a way to reverse state if the following stream is not what we expect
+              bool matched = false;
+              while (ignore_var_modifier(token)) token = tokeniser_next_token(tokeniser);
+
+              if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("char")))
+              {
+                  token = tokeniser_next_token(tokeniser);
+                  while (ignore_var_modifier(token)) token = tokeniser_next_token(tokeniser);
+                  if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("*")))
+                  {
+                      token = tokeniser_next_token(tokeniser);
+                      while (ignore_var_modifier(token)) token = tokeniser_next_token(tokeniser);
+                      if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("description")))
+                      {
+                          token = tokeniser_next_token(tokeniser, 1);
+                          if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("=")))
+                          {
+                              token = tokeniser_next_token(tokeniser, 1);
+                              if (string_lit_cmp(token_to_string_lit(token), STRING_LIT("R")))
+                              {
+                                  token = tokeniser_next_token(tokeniser, 1);
+                                  if (token.type == token_type::string)
+                                  {
+                                      // NOTE: Raw c-string literal, we have enclosing brackets.
+                                      token.len -= 2;
+                                      token.str += 1;
+                                      result->description = token_to_string_lit(token);
+                                      matched             = true;
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+
+              if (!matched)
+              {
+                *tokeniser = tokeniser_copy;
                 decl_var variable = {};
-                if (parse_type_and_var_decl(tokeniser, &variable, &result->name))
+                if (parse_type_and_var_decl(tokeniser, &variable))
                   result->variables.push_back(variable);
                 else
                   handled = false;
+               }
             }
         }
         else
@@ -508,10 +566,7 @@ bool fill_struct(tokeniser_t *tokeniser, decl_struct *result)
             handled = false;
         }
 
-        if (!handled)
-        {
-            token = tokeniser_next_token(tokeniser);
-        }
+        if (!handled) token = tokeniser_next_token(tokeniser);
     }
 
     return true;
@@ -603,11 +658,17 @@ static void fprint_variable_example(decl_struct_hierarchy const *hierarchy, stri
       string_lit alias   = root->aliases[0];
       if (alias == STRING_LIT("lns_buy_mapping") ||
           alias == STRING_LIT("lns_update_mapping") ||
+          alias == STRING_LIT("lns_names_to_owners") ||
+          alias == STRING_LIT("lns_owners_to_names") ||
           alias == STRING_LIT("lns_make_update_mapping_signature"))
       {
+          if (var_name == STRING_LIT("request_index"))  PRINT_AND_RETURN("0");
           if (var_name == STRING_LIT("type"))  PRINT_AND_RETURN("session");
           if (var_name == STRING_LIT("name"))  PRINT_AND_RETURN("\"My_Lns_Name\"");
+          if (var_name == STRING_LIT("name_hash"))  PRINT_AND_RETURN("\"BzT9ln2zY7/DxSqNeNXeEpYx3fxu2B+guA0ClqtSb0E=\"");
+          if (var_name == STRING_LIT("encrypted_value"))  PRINT_AND_RETURN("\"8fe253e6f15addfbce5c87583e970cb09294ec5b9fc7a1891c2ac34937e5a5c116c210ddf313f5fcccd8ee28cfeb0fa8e9\"");
           if (var_name == STRING_LIT("value")) PRINT_AND_RETURN("\"059f5a1ac2d04d0c09daa21b08699e8e2e0fd8d6fbe119207e5f241043cf77c30d\"");
+          if (var_name == STRING_LIT("entries")) PRINT_AND_RETURN("\"059f5a1ac2d04d0c09daa21b08699e8e2e0fd8d6fbe119207e5f241043cf77c30d\"");
       }
   }
 
@@ -646,9 +707,11 @@ static void fprint_variable_example(decl_struct_hierarchy const *hierarchy, stri
         var_name == STRING_LIT("miner_tx_hash") ||
         var_name == STRING_LIT("blks_hashes") ||
         var_name == STRING_LIT("prev_hash"))                     PRINT_AND_RETURN("\"bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70\"");
+    if (var_name == STRING_LIT("key"))                           PRINT_AND_RETURN("\"bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70\"");
+    if (var_name == STRING_LIT("mask"))                          PRINT_AND_RETURN("\"bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70\"");
 
       // TODO(doyle): Some examples need 32 byte payment ids
-    if (var_name ==  STRING_LIT("payment_id"))                   PRINT_AND_RETURN("\"f378710e54eeeb8d\"");
+    if (var_name == STRING_LIT("payment_id"))                    PRINT_AND_RETURN("\"f378710e54eeeb8d\"");
     if (var_name == STRING_LIT("txids") ||
         var_name == STRING_LIT("tx_hashes") ||
         var_name == STRING_LIT("tx_hash_list") ||
@@ -656,7 +719,8 @@ static void fprint_variable_example(decl_struct_hierarchy const *hierarchy, stri
         var_name == STRING_LIT("missed_tx") ||
         var_name == STRING_LIT("tx_hash") ||
         var_name == STRING_LIT("prunable_hash") ||
-        var_name == STRING_LIT("txid"))                          PRINT_AND_RETURN("\"b603cab7e3b9fe1f6d322e3167cd26e1e61c764afa9d733233ef716787786123\"");
+        var_name == STRING_LIT("txid"))                          PRINT_AND_RETURN("\"b605cab7e3b9fe1f6d322e3167cd26e1e61c764afa9d733233ef716787786123\"");
+    if (var_name == STRING_LIT("prev_txid"))                     PRINT_AND_RETURN("\"f26efb11e8eb6b446c5e0247e8883f41689591356f7abe65afe9fe75f567d40e\"");
     if (var_name == STRING_LIT("tx_key") ||
         var_name == STRING_LIT("tx_key_list"))                   PRINT_AND_RETURN("\"1982e99c69d8acc993cfc94ce59ff8f113d23482d9a25c892a3fc01c77dd8c4c\"");
     if (var_name == STRING_LIT("tx_blob") ||
@@ -694,7 +758,7 @@ static void fprint_variable_example(decl_struct_hierarchy const *hierarchy, stri
         var_name == STRING_LIT("message") ||
         var_name == STRING_LIT("tx_description"))                PRINT_AND_RETURN("\"User assigned note describing something\"");
   }
-  else if (var_type == STRING_LIT("uint64_t"))
+  if (var_type == STRING_LIT("uint64_t"))
   {
     if (var_name == STRING_LIT("staking_requirement"))           PRINT_AND_RETURN("100000000000");
     if (var_name == STRING_LIT("height") ||
@@ -728,6 +792,7 @@ static void fprint_variable_example(decl_struct_hierarchy const *hierarchy, stri
     if (var_name == STRING_LIT("service_node_version"))          PRINT_AND_RETURN("4, 0, 3");
     else                                                         PRINT_AND_RETURN("12345");
   }
+  if (var_type == STRING_LIT("uint8_t"))                         PRINT_AND_RETURN("11");
   if (var_type == STRING_LIT("int8_t"))                          PRINT_AND_RETURN("8");
   if (var_type == STRING_LIT("int"))
   {
@@ -905,6 +970,7 @@ void fprint_variable(std::vector<decl_struct const *> *global_helper_structs, st
 
     fprintf(stdout, " * `%.*s - %.*s", variable->name.len, variable->name.str, var_type->len, var_type->str);
     if (is_array) fprintf(stdout, "[]");
+    if (variable->value.len > 0) fprintf(stdout, " = %.*s", variable->value.len, variable->value.str);
     fprintf(stdout, "`");
 
     if (variable->comment.len > 0) fprintf(stdout, ": %.*s", variable->comment.len, variable->comment.str);
@@ -994,7 +1060,6 @@ void generate_markdown(std::vector<decl_struct> const *declarations)
             continue;
         }
 
-
         if (global_decl.type != decl_struct_type::rpc_command)
         {
             // TODO(doyle): Warning, unexpected non-rpc command in global scope
@@ -1007,10 +1072,25 @@ void generate_markdown(std::vector<decl_struct> const *declarations)
         collect_children_structs(&rpc_helper_structs, &global_decl.inner_structs);
         for (auto &inner_decl : global_decl.inner_structs)
         {
+          // NOTE: Sometimes we have a typedef from request_t to request, so we can have multiple request structs same for responses.
+          // We prefer response_t if we can find one. 
           switch(inner_decl.type)
           {
-              case decl_struct_type::request: request   = &inner_decl; break;
-              case decl_struct_type::response: response = &inner_decl; break;
+              case decl_struct_type::request:
+              {
+                  if (!request) request = &inner_decl;
+                  else if (request && inner_decl.name == STRING_LIT("request_t"))
+                      request = &inner_decl;
+              }
+              break;
+
+              case decl_struct_type::response:
+              {
+                  if (!response) response = &inner_decl;
+                  else if (response && inner_decl.name == STRING_LIT("response_t"))
+                      response = &inner_decl;
+              }
+              break;
           }
         }
 
@@ -1036,7 +1116,6 @@ void generate_markdown(std::vector<decl_struct> const *declarations)
               for (string_lit const &comment : global_decl.pre_decl_comments)
                 fprintf(stdout, "%.*s\n", comment.len, comment.str);
             }
-            fprintf(stdout, "\n");
             if (global_decl.description.len > 0)
                 fprintf(stdout, "%.*s\n", global_decl.description.len, global_decl.description.str);
             fprintf(stdout, "\n");
@@ -1058,6 +1137,19 @@ void generate_markdown(std::vector<decl_struct> const *declarations)
                   main_alias = &alias;
               }
               fprintf(stdout, "\n");
+
+              // NOTE: Variables in the top-most/global declaration in the RPC
+              // command structs are constants, responses and requests variables
+              // are in child structs.
+              if (global_decl.variables.size() > 0)
+              {
+                fprintf(stdout, "\nConstants: \n");
+                for (int i = 0; i < global_decl.variables.size(); i++)
+                {
+                  decl_var const &constants = global_decl.variables[i];
+                  fprint_variable(&global_helper_structs, &rpc_helper_structs, &constants);
+                }
+              }
 
               if (global_decl.pre_decl_comments.size() > 0 || global_decl.description.len > 0)
                 fprintf(stdout, "\n");

@@ -104,6 +104,7 @@ struct decl_var
   string_lit          type;
   string_lit          name;
   string_lit          comment;
+  string_lit          value; // NOTE: Most of the times this is empty
   bool                is_array;
   decl_var_metadata   metadata;
   struct decl_struct *is_struct;
