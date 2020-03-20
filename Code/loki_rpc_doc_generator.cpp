@@ -224,10 +224,7 @@ bool tokeniser_accept_token_if_type(tokeniser_t *tokeniser, token_type type, tok
     return false;
 }
 
-// TODO(doyle): Having just the parent name might not always be enough to
-// determine the context of the variable if there are multiple variables with
-// the same name
-decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string_lit const *parent_type)
+decl_var_metadata derive_metadata_from_variable(decl_var const *variable)
 {
   decl_var_metadata result  = {};
   string_lit const var_type = (variable->is_array) ? variable->template_expr : variable->type;
@@ -236,390 +233,39 @@ decl_var_metadata derive_metadata_from_variable(decl_var const *variable, string
   {
     local_persist string_lit const NICE_NAME = STRING_LIT("string");
     result.converted_type = &NICE_NAME;
-
-    if (variable->name == STRING_LIT("wallet_address") ||
-        variable->name == STRING_LIT("miner_address") ||
-        variable->name == STRING_LIT("change_address") ||
-        variable->name == STRING_LIT("operator_address") ||
-        variable->name == STRING_LIT("base_address") ||
-        variable->name == STRING_LIT("address"))
-    {
-      local_persist string_lit const EXAMPLE_ADDRESS = STRING_LIT("\"L8KJf3nRQ53NTX1YLjtHryjegFRa3ZCEGLKmRxUfvkBWK19UteEacVpYqpYscSJ2q8WRuHPFdk7Q5W8pQB7Py5kvUs8vKSk\"");
-      result.example                                 = &EXAMPLE_ADDRESS;
-    }
-    else if (variable->name == STRING_LIT("hash") ||
-             variable->name == STRING_LIT("top_block_hash") ||
-             variable->name == STRING_LIT("pow_hash") ||
-             variable->name == STRING_LIT("block_hash") ||
-             variable->name == STRING_LIT("block_hashes") ||
-             variable->name == STRING_LIT("main_chain_parent_block") ||
-             variable->name == STRING_LIT("id_hash") ||
-             variable->name == STRING_LIT("last_failed_id_hash") ||
-             variable->name == STRING_LIT("max_used_block_id_hash") ||
-             variable->name == STRING_LIT("miner_tx_hash") ||
-             variable->name == STRING_LIT("blks_hashes") ||
-             variable->name == STRING_LIT("prev_hash"))
-    {
-      local_persist string_lit const EXAMPLE_HASH  = STRING_LIT("\"bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70\"");
-      result.example                               = &EXAMPLE_HASH;
-    }
-    else if (variable->name ==  STRING_LIT("operator_cut"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"1.1%\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name ==  STRING_LIT("payment_id"))
-    {
-      // TODO(doyle): Some examples need 32 byte payment ids
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"f378710e54eeeb8d\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name ==  STRING_LIT("host"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"127.0.0.1\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name ==  STRING_LIT("public_ip"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"8.8.8.8\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("txids") ||
-             variable->name == STRING_LIT("tx_hashes") ||
-             variable->name == STRING_LIT("tx_hash_list") ||
-             variable->name == STRING_LIT("txs_hashes") ||
-             variable->name == STRING_LIT("missed_tx") ||
-             variable->name == STRING_LIT("tx_hash") ||
-             variable->name == STRING_LIT("prunable_hash") ||
-             variable->name == STRING_LIT("txid"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"b605cab7e3b9fe1f6d322e3167cd26e1e61c764afa9d733233ef716787786123\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("tx_key") ||
-             variable->name == STRING_LIT("tx_key_list"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"1982e99c69d8acc993cfc94ce59ff8f113d23482d9a25c892a3fc01c77dd8c4c\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("tx_blob") ||
-             variable->name == STRING_LIT("tx_blob_list"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"0402f78b05f78b05f78b0501ffd98b0502b888ddcf730229f056f5594cfcfd8d44f8033c9fda22450693d1694038e1cecaaaac25a8fc12af8992bc800102534df00c14ead3b3dedea9e7bdcf71c44803349b5e9aee2f73e22d5385ac147b7601008e5729d9329320444666d9d9d9dc602a3ae585de91ab2ca125665e3a363610021100000001839fdb0000000000000000000001200408d5ad7ab79d9b05c94033c2029f4902a98ec51f5175564f6978467dbb28723f929cf806d4ee1c781d7771183a93a1fd74f0827bddee9baac7e3083ab2b5840000\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("extra"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"01008e5729d9329320444666d9d9d9dc602a3ae585de91ab2ca125665e3a363610021100000001839fdb0000000000000000000001200408d5ad7ab79d9b05c94033c2029f4902a98ec51f5175564f6978467dbb28723f929cf806d4ee1c781d7771183a93a1fd74f0827bddee9baac7e3083ab2b584\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("service_node_pubkey") ||
-             variable->name == STRING_LIT("quorum_nodes") ||
-             variable->name == STRING_LIT("validators") ||
-             variable->name == STRING_LIT("workers") ||
-             variable->name == STRING_LIT("service_node_key") ||
-             variable->name == STRING_LIT("nodes_to_test") ||
-             variable->name == STRING_LIT("service_node_pubkeys"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"4a8c30cea9e729b06c91132295cce32d2a8e6e5bcf7b74a998e2ee1b3ed590b3\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("nettype"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"MAINNET\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("key_image") || variable->name == STRING_LIT("key_iamges"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"8d1bd8181bf7d857bdb281e0153d84cd55a3fcaa57c3e570f4a49f935850b5e3\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("key_image_pub_key"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"b1b696dd0a0d1815e341d9fed85708703c57b5d553a3615bcf4a06a36fa4bc38\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("bootstrap_daemon_address") || string_lit_cmp(variable->name, STRING_LIT("remote_address")))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"127.0.0.1:22023\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("status"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"OK\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("connection_id"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"083c301a3030329a487adb12ad981d2c\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("peer_id"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"c959fbfbed9e44fb\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("port"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"62950\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("registration_cmd"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"register_service_node 18446744073709551612 L8KJf3nRQ53NTX1YLjtHryjegFRa3ZCEGLKmRxUfvkBWK19UteEacVpYqpYscSJ2q8WRuHPFdk7Q5W8pQB7Py5kvUs8vKSk 18446744073709551612 1555894565 f90424b23c7969bb2f0191bca45e6433a59b0b37039a5e38a2ba8cc7ea1075a3 ba24e4bfb4af0f5f9f74e35f1a5685dc9250ee83f62a9ee8964c9a689cceb40b4f125c83d0cbb434e56712d0300e5a23fd37a5b60cddbcd94e2d578209532a0d\"");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("tag"))
-    {
-      local_persist string_lit const EXAMPLE   = STRING_LIT("\"My tag\"");
-      result.example                           = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("label"))
-    {
-      local_persist string_lit const EXAMPLE   = STRING_LIT("\"My label\"");
-      result.example                           = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("description"))
-    {
-      local_persist string_lit const EXAMPLE   = STRING_LIT("\"My account description\"");
-      result.example                           = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("transfer_type"))
-    {
-      local_persist string_lit const EXAMPLE   = STRING_LIT("\"all\"");
-      result.example                           = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("recipient_name"))
-    {
-      local_persist string_lit const EXAMPLE   = STRING_LIT("\"Thor\"");
-      result.example                           = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("password"))
-    {
-      local_persist string_lit const EXAMPLE   = STRING_LIT("\"not_a_secure_password\"");
-      result.example                           = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("msg"))
-    {
-      local_persist string_lit const EXAMPLE   = STRING_LIT("\"Message returned by the sender (wallet/daemon)\"");
-      result.example                           = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("note") || variable->name == STRING_LIT("message") || variable->name == STRING_LIT("tx_description"))
-    {
-      local_persist string_lit const EXAMPLE   = STRING_LIT("\"User assigned note describing something\"");
-      result.example                           = &EXAMPLE;
-    }
-
-    if (!result.example)
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("\"TODO(loki): Write example string\"");
-      result.example                         = &EXAMPLE;
-    }
   }
   else if (var_type == STRING_LIT("uint64_t"))
   {
     local_persist string_lit const NICE_NAME = STRING_LIT("uint64");
     result.converted_type                    = &NICE_NAME;
 
-    if (variable->name == STRING_LIT("staking_requirement"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("100000000000");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("height") || variable->name == STRING_LIT("registration_height") || variable->name == STRING_LIT("last_reward_block_height"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("234767");
-      result.example                         = &EXAMPLE;
-    }
-    else if (parent_type && *parent_type == STRING_LIT("contribution_t") && variable->name == STRING_LIT("amount"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("26734261552878");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("request_unlock_height"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("251123");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("last_reward_transaction_index"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("0");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("portions_for_operator"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("18446744073709551612");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("last_seen"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("1554685440");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("filename"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("wallet");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("password"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("password");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("language"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("English");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("ring_size"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("10");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("outputs"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("10");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("checkpointed"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("1");
-      result.example                         = &EXAMPLE;
-    }
-    else
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("123");
-      result.example                         = &EXAMPLE;
-    }
   }
   else if (var_type == STRING_LIT("uint32_t"))
   {
     local_persist string_lit const NICE_NAME = STRING_LIT("uint32");
     result.converted_type                    = &NICE_NAME;
 
-    if (variable->name == STRING_LIT("threads_count"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("8");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("account_index"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("0");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("address_indices"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("0");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("address_index"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("0");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("subaddr_indices"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("0");
-      result.example                         = &EXAMPLE;
-    }
-    else if (variable->name == STRING_LIT("priority"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("0");
-      result.example                         = &EXAMPLE;
-    }
-    else
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("2130706433");
-      result.example                         = &EXAMPLE;
-    }
   }
   else if (var_type == STRING_LIT("uint16_t"))
   {
     local_persist string_lit const NICE_NAME = STRING_LIT("uint16");
     result.converted_type = &NICE_NAME;
-
-    if (variable->name == STRING_LIT("service_node_version"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("4, 0, 3");
-      result.example                         = &EXAMPLE;
-    }
-    else
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("12345");
-      result.example                         = &EXAMPLE;
-    }
-  }
-  else if (var_type == STRING_LIT("uint8_t"))
-  {
-    local_persist string_lit const EXAMPLE   = STRING_LIT("11");
-    local_persist string_lit const NICE_NAME = STRING_LIT("uint8");
-    result.converted_type = &NICE_NAME;
-    result.example        = &EXAMPLE;
-  }
-  else if (var_type == STRING_LIT("int64_t"))
-  {
-    local_persist string_lit const EXAMPLE   = STRING_LIT("8192");
-    local_persist string_lit const NICE_NAME = STRING_LIT("int64");
-    result.converted_type = &NICE_NAME;
-    result.example        = &EXAMPLE;
-  }
-  else if (var_type == STRING_LIT("int8_t"))
-  {
-    local_persist string_lit const NICE_NAME = STRING_LIT("int8");
-    local_persist string_lit const EXAMPLE   = STRING_LIT("8");
-    result.converted_type                    = &NICE_NAME;
-    result.example                           = &EXAMPLE;
-  }
-  else if (var_type == STRING_LIT("int"))
-  {
-    if (variable->name == STRING_LIT("spent_status"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("0, 1");
-      result.example                         = &EXAMPLE;
-    }
-    else
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("12345");
-      result.example                         = &EXAMPLE;
-    }
   }
   else if (var_type == STRING_LIT("blobdata"))
   {
-    local_persist string_lit const NICE_NAME = STRING_LIT("string");
-    local_persist string_lit const EXAMPLE   = STRING_LIT("\"sd2b5f838e8cc7774d92f5a6ce0d72cb9bd8db2ef28948087f8a50ff46d188dd9\"");
-    result.converted_type = &NICE_NAME;
-    result.example        = &EXAMPLE;
-  }
-  else if (var_type == STRING_LIT("bool"))
-  {
-    if (variable->name == STRING_LIT("untrusted"))
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("false");
-      result.example                         = &EXAMPLE;
-    }
-    else
-    {
-      local_persist string_lit const EXAMPLE = STRING_LIT("true");
-      result.example                         = &EXAMPLE;
-    }
+      local_persist string_lit const NICE_NAME = STRING_LIT("string");
+      result.converted_type                    = &NICE_NAME;
   }
   else if (var_type == STRING_LIT("crypto::hash"))
   {
-    local_persist string_lit const NICE_NAME = STRING_LIT("string[64]");
-    local_persist string_lit const EXAMPLE   = STRING_LIT("\"bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70\"");
-
-    result.converted_type = &NICE_NAME;
-    result.example        = &EXAMPLE;
+      local_persist string_lit const NICE_NAME = STRING_LIT("string[64]");
+      result.converted_type                    = &NICE_NAME;
   }
   else if (var_type == STRING_LIT("difficulty_type"))
   {
-    local_persist string_lit const NICE_NAME = STRING_LIT("uint64");
-    local_persist string_lit const EXAMPLE   = STRING_LIT("25179406071");
-
-    result.converted_type = &NICE_NAME;
-    result.example        = &EXAMPLE;
+      local_persist string_lit const NICE_NAME = STRING_LIT("uint64");
+      result.converted_type                    = &NICE_NAME;
   }
-
   return result;
 };
 
@@ -700,7 +346,7 @@ bool parse_type_and_var_decl(tokeniser_t *tokeniser, decl_var *variable, string_
     // TODO(doyle): This is horribly incomplete, but we only specify arrays on
     // terms of dynamic structures in loki. So meh.
     variable->is_array = variable->template_expr.len > 0;
-    variable->metadata = derive_metadata_from_variable(variable, parent_type);
+    variable->metadata = derive_metadata_from_variable(variable);
 
     token = tokeniser_next_token(tokeniser);
     if (token.type != token_type::semicolon)
@@ -1117,33 +763,6 @@ void fprint_curl_json_rpc_param(std::vector<decl_struct const *> *global_helper_
     var_type = variable->template_expr;
   }
 
-#if 0
-  if (metadata->example)
-  {
-    fprintf(stdout, "%.*s", metadata->example->len, metadata->example->str);
-  }
-  else
-  {
-    if (decl_struct const *resolved_decl = lookup_type_definition(global_helper_structs, rpc_helper_structs, var_type))
-    {
-      fprintf(stdout, "{\n");
-      indent_level++;
-      for (size_t var_index = 0; var_index < resolved_decl->variables.size(); ++var_index)
-      {
-        decl_var const *inner_variable = &resolved_decl->variables[var_index];
-        fprint_curl_json_rpc_param(global_helper_structs, rpc_helper_structs, inner_variable, indent_level);
-        if (var_index < (resolved_decl->variables.size() - 1))
-        {
-          fprintf(stdout, ",");
-          fprintf(stdout, "\n");
-        }
-      }
-
-      fprintf(stdout, "\n");
-      fprintf_indented(--indent_level, stdout, "}");
-    }
-  }
-#else
   if (decl_struct const *resolved_decl = lookup_type_definition(global_helper_structs, rpc_helper_structs, var_type))
   {
     fprintf(stdout, "{\n");
@@ -1168,7 +787,6 @@ void fprint_curl_json_rpc_param(std::vector<decl_struct const *> *global_helper_
   {
     fprint_variable_example(hierarchy, var_type, variable);
   }
-#endif
 
   if (variable->is_array)
     fprintf(stdout, "]");
