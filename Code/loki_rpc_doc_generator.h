@@ -22,6 +22,8 @@
 
 #include <vector>
 #include <map>
+#include <csignal>
+#include <algorithm>
 #include <assert.h>
 #include <string.h>
 #include <ctype.h>
@@ -54,42 +56,56 @@ struct defer_helper
 #define ARRAY_COUNT(array) sizeof(array)/sizeof(array[0])
 #define CHAR_COUNT(str) (ARRAY_COUNT(str) - 1)
 
-enum struct token_type
-{
-    invalid,
-    left_curly_brace,
-    right_curly_brace,
-    identifier,
-    fwd_slash,
-    semicolon,
-    colon,
-    comma,
-    open_paren,
-    close_paren,
-    namespace_colon,
-    comment,
-    less_than,
-    greater_than,
-    equal,
-    string,
-    asterisks,
-
-    introspect_marker,
-    json_rpc_marker,
-    uri_binary_rpc_marker,
-    uri_json_rpc_marker,
-
-    end_of_stream,
-};
-
 struct string_lit
 {
     string_lit() = default;
     string_lit(char const *str_, int len_) : str(str_), len(len_) {}
-    char const *str;
-    int         len;
+    union {
+        char const *str;
+        char *str_;
+    };
+    int len;
 };
 #define STRING_LIT(str) (string_lit){str, CHAR_COUNT(str)}
+
+#define X_MACRO \
+    X_ENTRY(invalid, "XX INVALID") \
+    X_ENTRY(left_curly_brace, "{") \
+    X_ENTRY(right_curly_brace, "}") \
+    X_ENTRY(identifier, "<identifier>") \
+    X_ENTRY(fwd_slash, "/") \
+    X_ENTRY(semicolon, ";") \
+    X_ENTRY(colon, ":") \
+    X_ENTRY(comma, ",") \
+    X_ENTRY(open_paren, "(") \
+    X_ENTRY(close_paren, ")") \
+    X_ENTRY(namespace_colon, "::") \
+    X_ENTRY(comment, "<comment>") \
+    X_ENTRY(less_than, "<") \
+    X_ENTRY(greater_than, ">") \
+    X_ENTRY(equal, "=") \
+    X_ENTRY(string, "<string>") \
+    X_ENTRY(asterisks, "*") \
+    X_ENTRY(number, "{0-9}*") \
+    X_ENTRY(ampersand, "&") \
+    X_ENTRY(minus, "-") \
+    X_ENTRY(dot, ".") \
+    X_ENTRY(end_of_stream, "<eof>")
+
+#define X_ENTRY(enum_val, stringified) enum_val,
+enum struct token_type
+{
+    X_MACRO
+};
+#undef X_ENTRY
+
+#define X_ENTRY(enum_val, stringified) STRING_LIT(stringified),
+string_lit const token_type_string[] =
+{
+    X_MACRO
+};
+#undef X_ENTRY
+#undef X_MACRO
 
 struct decl_var_metadata
 {
@@ -104,20 +120,10 @@ struct decl_var
   string_lit          type;
   string_lit          name;
   string_lit          comment;
-  string_lit          value; // NOTE: Most of the times this is empty
+  string_lit          value;    // NOTE: Most of the times this is empty
   bool                is_array;
   decl_var_metadata   metadata;
-  struct decl_struct *is_struct;
-};
-
-struct decl_enum
-{
-  const char *name;
-  int name_len;
-  std::vector<const char*> names;
-  std::vector<int> names_lens;
-  std::vector<const char*> vals;
-  std::vector<int> vals_lens;
+  struct decl_struct *aliases_to;
 };
 
 enum decl_struct_type
@@ -134,23 +140,26 @@ struct decl_struct
   std::vector<string_lit>  aliases;
   std::vector<string_lit>  pre_decl_comments;
 
+  decl_struct             *inheritance_parent; // NOTE: We only support 1, please, think of the children.
+  string_lit               inheritance_parent_name;
+
   decl_struct_type         type;
   string_lit               description;
   string_lit               name;
   std::vector<decl_struct> inner_structs;
   std::vector<decl_var>    variables;
-  std::vector<decl_enum>   enums;
 };
 
-struct decl_struct_wrapper
+struct decl_context
 {
-  std::vector<string_lit> aliases;
-  std::vector<string_lit> pre_decl_comments;
-  decl_struct             decl;
+    std::vector<decl_struct> declarations;
+    std::vector<decl_struct> alias_declarations; // Declarations that were created to resolve C++ `using new_type = <type>;`
 };
 
 struct token_t
 {
+  int        new_lines_encountered;
+  char      *last_new_line;
   char      *str;
   int        len;
   token_type type;
@@ -158,9 +167,17 @@ struct token_t
 
 struct tokeniser_t
 {
-    token_t *tokens;
-    size_t tokens_index;
-    int    indent_level;
+    char *file;
+    char *last_new_line;
+    int   line; // 0 based, i.e text file line 1 -> line 0
+    char *ptr;
+    int   scope_level;
+    int   paren_level;
+    int   angle_bracket_level;
+
+    string_lit last_required_token_lit;
+    token_type last_required_token_type;
+    token_t    last_received_token;
 };
 
 enum struct decl_type_t
