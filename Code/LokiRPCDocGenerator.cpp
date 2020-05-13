@@ -219,6 +219,20 @@ static void Print_VariableExample(DeclStructHierarchy const *hierarchy, String v
           if (var_name == STRING_LIT("result")) PRINT_AND_RETURN("\"061e5b4734c5e338c1d2a25acb007d806725e51cdb2aa8aac17101afd60cd002\"");
       }
 
+      if (alias == STRING_LIT("get_checkpoints"))
+      {
+          if (var_name == STRING_LIT("type")) PRINT_AND_RETURN("\"ServiceNode\"");
+      }
+
+      if (alias == STRING_LIT("get_connections"))
+      {
+          if (var_name == STRING_LIT("connections"))
+          {
+              PRINT_AND_RETURN(
+                  R"([{"address":"144.76.210.174:22243","address_type":1,"avg_download":0,"avg_upload":0,"connection_id":"5a4f1c03419641da9edb2fe6dcfec087","current_download":0,"current_upload":0,"height":0,"host":"144.76.210.174","incoming":false,"ip":"144.76.210.174","live_time":1,"local_ip":false,"localhost":false,"peer_id":"0","port":"22243","pruning_seed":0,"recv_count":0,"recv_idle_time":1,"rpc_port":0,"send_count":289,"send_idle_time":1,"state":"before_handshake","support_flags":0},{"address":"68.183.185.243:22022","address_type":1,"avg_download":38,"avg_upload":2,"connection_id":"6bb6e4412ad642bcbfb0e56a522da541","current_download":8,"current_upload":0,"height":532169,"host":"68.183.185.243","incoming":false,"ip":"68.183.185.243","live_time":2,"local_ip":false,"localhost":false,"peer_id":"3c9e48b830f60241","port":"22022","pruning_seed":0,"recv_count":79507,"recv_idle_time":1,"rpc_port":0,"send_count":4663,"send_idle_time":1,"state":"synchronizing","support_flags":1}])");}
+      }
+
+
       if (alias == STRING_LIT("get_block"))
       {
           if (var_name == STRING_LIT("blob"))
@@ -255,6 +269,7 @@ static void Print_VariableExample(DeclStructHierarchy const *hierarchy, String v
       if (var_name == STRING_LIT("destination"))                   PRINT_AND_RETURN("\"L8ssYFtxi1HTFQdbmG9Lt71tyudgageDgBqBLcgLnw5XBiJ1NQLFYNAAfYpYS3jHaSe8UsFYjSgKadKhC7edTSQB15s6T7g\"");
       if (var_name == STRING_LIT("owner"))                         PRINT_AND_RETURN("\"L8ssYFtxi1HTFQdbmG9Lt71tyudgageDgBqBLcgLnw5XBiJ1NQLFYNAAfYpYS3jHaSe8UsFYjSgKadKhC7edTSQB15s6T7g\"");
       if (var_name == STRING_LIT("backup_owner"))                  PRINT_AND_RETURN("\"L8PYYYTh6yEewvuPmF75uhjDn9fBzKXp8CeMuwKNZBvZT8wAoe9hJ4favnZMvTTkNdT56DMNDcdWyheb3icfk4MS3udsP4R\"");
+      if (var_name == STRING_LIT("signature"))                     PRINT_AND_RETURN("\"bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70\"");
       if (var_name == STRING_LIT("wallet_address") ||
           var_name == STRING_LIT("miner_address") ||
           var_name == STRING_LIT("change_address") ||
@@ -300,14 +315,22 @@ static void Print_VariableExample(DeclStructHierarchy const *hierarchy, String v
           var_name == STRING_LIT("tx_blob_list"))                  PRINT_AND_RETURN("\"0402f78b05f78b05f78b0501ffd98b0502b888ddcf730229f056f5594cfcfd8d44f8033c9fda22450693d1694038e1cecaaaac25a8fc12af8992bc800102534df00c14ead3b3dedea9e7bdcf71c44803349b5e9aee2f73e22d5385ac147b7601008e5729d9329320444666d9d9d9dc602a3ae585de91ab2ca125665e3a363610021100000001839fdb0000000000000000000001200408d5ad7ab79d9b05c94033c2029f4902a98ec51f5175564f6978467dbb28723f929cf806d4ee1c781d7771183a93a1fd74f0827bddee9baac7e3083ab2b5840000\"");
       if (var_name == STRING_LIT("service_node_pubkey") ||
           var_name == STRING_LIT("quorum_nodes") ||
+          var_name == STRING_LIT("service_node_winner") ||
           var_name == STRING_LIT("validators") ||
           var_name == STRING_LIT("workers") ||
           var_name == STRING_LIT("service_node_key") ||
           var_name == STRING_LIT("nodes_to_test") ||
+          var_name == STRING_LIT("service_node_privkey") ||
           var_name == STRING_LIT("service_node_pubkeys"))          PRINT_AND_RETURN("\"4a8c30cea9e729b06c91132295cce32d2a8e6e5bcf7b74a998e2ee1b3ed590b3\"");
 
+      if (var_name == STRING_LIT("pow_algorithm"))                 PRINT_AND_RETURN("\"RandomX (LOKI variant)\"");
       if (var_name == STRING_LIT("service_node_ed25519_pubkey"))   PRINT_AND_RETURN("\"1de25fd280b9b08da62f06a5521c735fd94b7ecf237ca7409748295e75b48104\"");
+      if (var_name == STRING_LIT("pubkey"))                        PRINT_AND_RETURN("\"1de25fd280b9b08da62f06a5521c735fd94b7ecf237ca7409748295e75b48104\"");
+      if (var_name == STRING_LIT("service_node_ed25519_privkey"))  PRINT_AND_RETURN("\"1de25fd280b9b08da62f06a5521c735fd94b7ecf237ca7409748295e75b48104\"");
+      if (var_name == STRING_LIT("pubkey_ed25519"))                PRINT_AND_RETURN("\"1de25fd280b9b08da62f06a5521c735fd94b7ecf237ca7409748295e75b48104\"");
+      if (var_name == STRING_LIT("pubkey_x25519"))                 PRINT_AND_RETURN("\"7a8d1961ec9d1ac77aa67a2cded9271b0b6b9e4406005b36e260d0a230943b0e\"");
       if (var_name == STRING_LIT("service_node_x25519_pubkey"))    PRINT_AND_RETURN("\"7a8d1961ec9d1ac77aa67a2cded9271b0b6b9e4406005b36e260d0a230943b0e\"");
+      if (var_name == STRING_LIT("service_node_x25519_privkey"))   PRINT_AND_RETURN("\"7a8d1961ec9d1ac77aa67a2cded9271b0b6b9e4406005b36e260d0a230943b0e\"");
 
       if (var_name == STRING_LIT("key_image") ||
           var_name == STRING_LIT("key_images"))                    PRINT_AND_RETURN("\"8d1bd8181bf7d857bdb281e0153d84cd55a3fcaa57c3e570f4a49f935850b5e3\"");
@@ -330,6 +353,8 @@ static void Print_VariableExample(DeclStructHierarchy const *hierarchy, String v
       if (var_name == STRING_LIT("recipient_name"))                PRINT_AND_RETURN("\"Thor\"");
       if (var_name == STRING_LIT("password"))                      PRINT_AND_RETURN("\"not_a_secure_password\"");
       if (var_name == STRING_LIT("msg"))                           PRINT_AND_RETURN("\"Message returned by the sender (wallet/daemon)\"");
+      if (var_name == STRING_LIT("version"))                       PRINT_AND_RETURN("\"7\"");
+      if (var_name == STRING_LIT("status_line"))                   PRINT_AND_RETURN("\"v15; Height: 531686\"");
       if (var_name == STRING_LIT("note") ||
           var_name == STRING_LIT("message") ||
           var_name == STRING_LIT("tx_description"))                PRINT_AND_RETURN("\"User assigned note describing something\"");
