@@ -78,6 +78,22 @@ bool Token_IsEOF(Token token)
     return result;
 }
 
+bool Token_IsCPPTypeModifier(Token token)
+{
+    static String const modifiers[] = {
+        STRING_LIT("constexpr"),
+        STRING_LIT("const"),
+        STRING_LIT("static"),
+    };
+
+    for (String const &mod : modifiers)
+    {
+        if (Token_String(token) == mod) return true;
+    }
+
+  return false;
+}
+
 // -------------------------------------------------------------------------------------------------
 //
 // Tokeniser Report Error
@@ -419,6 +435,106 @@ bool Tokeniser_AdvanceToParenLevel(Tokeniser *tokeniser, int paren_level)
 // Tokeniser Parsing
 //
 // -------------------------------------------------------------------------------------------------
+bool Tokeniser_ParseFuctionStartFromName(Tokeniser *tokeniser)
+{
+    // NOTE: This function *should* be able to handle constructors and free standing functions (probably).
+
+    /*
+       PARSING SCENARIO
+       struct Foo
+       {
+              +------------------ Tokeniser should be here, or, before
+              V
+           Foo(...) { ... }
+           int x;
+       };
+    */
+
+    // NOTE: Eat all parameters in function
+    {
+        int original_paren_level = tokeniser->paren_level;
+        if (!Tokeniser_AdvanceToTokenType(tokeniser, TokenType::open_paren))
+        {
+            // @TODO(doyle): Logging
+            return false;
+        }
+
+        if (!Tokeniser_AdvanceToParenLevel(tokeniser, original_paren_level))
+        {
+            // @TODO(doyle): Logging
+            return false;
+        }
+
+    }
+
+    // NOTE: Remove const from any member functions
+    Token peek = Tokeniser_PeekToken(tokeniser);
+    if (Token_IsCPPTypeModifier(peek))
+        Tokeniser_NextToken(tokeniser);
+
+
+    // NOTE: If next token is '=' then we have a 'Foo = default();' situation
+    if (Tokeniser_RequireTokenType(tokeniser, TokenType::equal))
+    {
+        Tokeniser_AdvanceToTokenType(tokeniser, TokenType::semicolon);
+    }
+    else if (Tokeniser_RequireTokenType(tokeniser, TokenType::left_curly_brace))
+    {
+        /*
+           PARSING SCENARIO
+           struct Foo
+           {
+                        +------------------ Tokeniser hit a open brace, '{'
+                        V
+               Foo(...) { ... }
+               int x;
+           };
+        */
+
+        int original_scope_level = tokeniser->scope_level - 1;
+        assert(tokeniser->scope_level > 0);
+        assert(tokeniser->scope_level != original_scope_level);
+        Tokeniser_AdvanceToScopeLevel(tokeniser, original_scope_level);
+    }
+    else if (Tokeniser_RequireTokenType(tokeniser, TokenType::colon))
+    {
+        /*
+           PARSING SCENARIO
+           struct Foo
+           {
+                        +------------------ Tokeniser hit a colon, ':'
+                        V
+               Foo(...) : x(1) { ... }
+               int x;
+           };
+        */
+
+        int original_scope_level = tokeniser->scope_level;
+        Tokeniser_AdvanceToTokenType(tokeniser, TokenType::left_curly_brace);
+        assert(tokeniser->scope_level != original_scope_level);
+        Tokeniser_AdvanceToScopeLevel(tokeniser, original_scope_level);
+    }
+    else if (Tokeniser_RequireTokenType(tokeniser, TokenType::semicolon))
+    {
+        /*
+           PARSING SCENARIO
+           struct Foo
+           {
+                       +------------------ Tokeniser hit a semicolon, ';'
+                       V
+               Foo(...);
+               int x;
+           };
+        */
+        // NOTE: Do nothing, we're at the end of the construct declaration
+    }
+    else
+    {
+        // @TODO(doyle): What case is this? No idea
+        return false;
+    }
+}
+
 bool Tokeniser_ParseRPCAliasNamess(Tokeniser *tokeniser, DeclStruct *result)
 {
     /*
