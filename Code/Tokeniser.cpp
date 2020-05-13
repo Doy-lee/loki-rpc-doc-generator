@@ -576,21 +576,44 @@ bool Tokeniser_ParseRPCAliasNamess(Tokeniser *tokeniser, DeclStruct *result)
     }
 }
 
-static DeclVariableMetadata DeriveVariableMetadata(DeclVariable const *variable)
+// NOTE: In a response/request struct for RPC commands, the primitives as
+// inputs and outputs of the command are converted into something more generic
+// and language agnostic.
+static DeclVariableMetadata DeriveVariableMetadata(DeclVariable *variable)
 {
   DeclVariableMetadata result  = {};
   String const var_type = (variable->is_array) ? variable->template_expr : variable->type;
 
-  if (var_type == STRING_LIT("std::string"))
+  if (variable->type == STRING_LIT("std::array<int, 3>"))
+  {
+      // @TODO(doyle): Yes, I know .. not cool. This can be improved by
+      // constructing the tokeniser inplace and decoding the template.
+      local_persist String const NICE_NAME = STRING_LIT("int[3]");
+      result.is_std_array                  = true;
+      result.converted_type                = &NICE_NAME;
+  }
+  else if (variable->type == STRING_LIT("std::array<uint16_t, 3>"))
+  {
+      // @TODO(doyle): Yes, I know .. not cool. This can be improved by
+      // constructing the tokeniser inplace and decoding the template.
+      local_persist String const NICE_NAME = STRING_LIT("uint16[3]");
+      result.is_std_array                  = true;
+      result.converted_type                = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("std::string"))
   {
     local_persist String const NICE_NAME = STRING_LIT("string");
     result.converted_type = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("uint64_t"))
+  else if (var_type == STRING_LIT("uint64_t") || var_type == STRING_LIT("std::uint64_t"))
   {
     local_persist String const NICE_NAME = STRING_LIT("uint64");
     result.converted_type                    = &NICE_NAME;
-
+  }
+  else if (var_type == STRING_LIT("size_t"))
+  {
+    local_persist String const NICE_NAME = STRING_LIT("uint64");
+    result.converted_type                    = &NICE_NAME;
   }
   else if (var_type == STRING_LIT("uint32_t"))
   {
@@ -612,7 +635,7 @@ static DeclVariableMetadata DeriveVariableMetadata(DeclVariable const *variable)
     local_persist String const NICE_NAME = STRING_LIT("int64");
     result.converted_type                    = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("int32_t"))
+  else if (var_type == STRING_LIT("int32_t") || var_type == STRING_LIT("int"))
   {
     local_persist String const NICE_NAME = STRING_LIT("int32");
     result.converted_type                    = &NICE_NAME;
@@ -632,9 +655,16 @@ static DeclVariableMetadata DeriveVariableMetadata(DeclVariable const *variable)
       local_persist String const NICE_NAME = STRING_LIT("string");
       result.converted_type                    = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("crypto::hash"))
+  else if (var_type == STRING_LIT("crypto::hash") ||
+           var_type == STRING_LIT("crypto::public_key") ||
+           var_type == STRING_LIT("rct::key"))
   {
       local_persist String const NICE_NAME = STRING_LIT("string[64]");
+      result.converted_type                    = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("crypto::signature"))
+  {
+      local_persist String const NICE_NAME = STRING_LIT("string[128]");
       result.converted_type                    = &NICE_NAME;
   }
   else if (var_type == STRING_LIT("difficulty_type"))
@@ -642,6 +672,8 @@ static DeclVariableMetadata DeriveVariableMetadata(DeclVariable const *variable)
       local_persist String const NICE_NAME = STRING_LIT("uint64");
       result.converted_type                    = &NICE_NAME;
   }
+  if (result.converted_type || var_type == STRING_LIT("bool"))
+      result.recognised = true;
   return result;
 };
 
@@ -996,6 +1028,17 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
                     tokeniser,
                     parent_name,
                     "Tokeniser encountered BEGIN_SERIALIZE() macro, failed to find closing macro END_SERIALIZE()");
+                return false;
+            }
+        }
+        else if (token_lit == STRING_LIT("BEGIN_SERIALIZE_OBJECT"))
+        {
+            if (!Tokeniser_NextMarker(tokeniser, STRING_LIT("END_SERIALIZE()")))
+            {
+                Tokeniser_ErrorParseStruct(
+                    tokeniser,
+                    parent_name,
+                    "Tokeniser encountered BEGIN_SERIALIZE() macro, failed to find closing macro END_SERIALIZE_OBJECT()");
                 return false;
             }
         }

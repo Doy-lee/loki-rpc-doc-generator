@@ -114,7 +114,6 @@ char *File_ReadAll(char const *file_path, ptrdiff_t *file_size)
 // Doc Generator
 //
 // -------------------------------------------------------------------------------------------------
-
 DeclStruct const *LookupTypeDefinition(std::vector<DeclStruct const *> *global_helper_structs,
                                        std::vector<DeclStruct const *> *children_structs,
                                        String const var_type)
@@ -123,46 +122,50 @@ DeclStruct const *LookupTypeDefinition(std::vector<DeclStruct const *> *global_h
   DeclStruct const *result    = nullptr;
   for (int tries = 0; tries < 2; tries++)
   {
-    for (DeclStruct const *decl : *global_helper_structs)
-    {
-      if (String_Compare(*check_type, decl->name))
-      {
-        result = decl;
-        break;
-      }
-    }
-
-    if (!result)
-    {
       for (DeclStruct const *decl : *children_structs)
       {
-        if (String_Compare(*check_type, decl->name))
-        {
-          result = decl;
-          break;
+          if (String_Compare(*check_type, decl->name))
+          {
+              result = decl;
+              break;
+          }
+      }
+
+      if (!result)
+      {
+          for (DeclStruct const *decl : *global_helper_structs)
+          {
+            if (String_Compare(*check_type, decl->name))
+            {
+              result = decl;
+              break;
+            }
+          }
+      }
+
+      // @TODO(doyle): We should tokenise this and pull out the namespace
+      // TODO(doyle): Hacky workaround for handling cryptonote namespace, just
+      // take the next adjacent namespace afterwards and hope its the only one so
+      // variable -> type declaration can be resolved.
+      if (!result)
+      {
+          String const skip_namespace[] = {STRING_LIT("cryptonote::"), STRING_LIT("rpc::"), STRING_LIT("service_nodes::")};
+          for (auto const &name : skip_namespace)
+          {
+              if (var_type.len >= name.len && strncmp(name.str, var_type.str, name.len) == 0)
+              {
+                  static String var_type_without;
+                  var_type_without     = {};
+                  var_type_without.len = var_type.len - name.len;
+                  var_type_without.str = var_type.str + name.len;
+                  check_type           = &var_type_without;
+              }
         }
       }
-    }
-
-    // TODO(doyle): Hacky workaround for handling cryptonote namespace, just
-    // take the next adjacent namespace afterwards and hope its the only one so
-    // variable -> type declaration can be resolved.
-    if (!result)
-    {
-      String const skip_namespace = STRING_LIT("cryptonote::");
-      if (var_type.len >= skip_namespace.len && strncmp(skip_namespace.str, var_type.str, skip_namespace.len) == 0)
+      else
       {
-        static String var_type_without_cryptonote;
-        var_type_without_cryptonote     = {};
-        var_type_without_cryptonote.len = var_type.len - skip_namespace.len;
-        var_type_without_cryptonote.str = var_type.str + skip_namespace.len;
-        check_type                      = &var_type_without_cryptonote;
+          break;
       }
-    }
-    else
-    {
-      break;
-    }
   }
 
   return result;
@@ -270,6 +273,8 @@ static void Print_VariableExample(DeclStructHierarchy const *hierarchy, String v
       if (var_name == STRING_LIT("owner"))                         PRINT_AND_RETURN("\"L8ssYFtxi1HTFQdbmG9Lt71tyudgageDgBqBLcgLnw5XBiJ1NQLFYNAAfYpYS3jHaSe8UsFYjSgKadKhC7edTSQB15s6T7g\"");
       if (var_name == STRING_LIT("backup_owner"))                  PRINT_AND_RETURN("\"L8PYYYTh6yEewvuPmF75uhjDn9fBzKXp8CeMuwKNZBvZT8wAoe9hJ4favnZMvTTkNdT56DMNDcdWyheb3icfk4MS3udsP4R\"");
       if (var_name == STRING_LIT("signature"))                     PRINT_AND_RETURN("\"bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70bf430a3279f576ed8a814be25193e5a1ec61d3ee5729e64f47d8480ce5a2da70\"");
+      if (var_name == STRING_LIT("filename"))                      PRINT_AND_RETURN("\"Doyles_Cool_Wallet\"");
+      if (var_name == STRING_LIT("language"))                      PRINT_AND_RETURN("\"english\"");
       if (var_name == STRING_LIT("wallet_address") ||
           var_name == STRING_LIT("miner_address") ||
           var_name == STRING_LIT("change_address") ||
@@ -326,6 +331,8 @@ static void Print_VariableExample(DeclStructHierarchy const *hierarchy, String v
       if (var_name == STRING_LIT("pow_algorithm"))                 PRINT_AND_RETURN("\"RandomX (LOKI variant)\"");
       if (var_name == STRING_LIT("service_node_ed25519_pubkey"))   PRINT_AND_RETURN("\"1de25fd280b9b08da62f06a5521c735fd94b7ecf237ca7409748295e75b48104\"");
       if (var_name == STRING_LIT("pubkey"))                        PRINT_AND_RETURN("\"1de25fd280b9b08da62f06a5521c735fd94b7ecf237ca7409748295e75b48104\"");
+      if (var_name == STRING_LIT("spendkey"))                      PRINT_AND_RETURN("\"1de25fd280b9b08da62f06a5521c735fd94b7ecf237ca7409748295e75b48104\"");
+      if (var_name == STRING_LIT("viewkey"))                       PRINT_AND_RETURN("\"1de25fd280b9b08da62f06a5521c735fd94b7ecf237ca7409748295e75b48104\"");
       if (var_name == STRING_LIT("service_node_ed25519_privkey"))  PRINT_AND_RETURN("\"1de25fd280b9b08da62f06a5521c735fd94b7ecf237ca7409748295e75b48104\"");
       if (var_name == STRING_LIT("pubkey_ed25519"))                PRINT_AND_RETURN("\"1de25fd280b9b08da62f06a5521c735fd94b7ecf237ca7409748295e75b48104\"");
       if (var_name == STRING_LIT("pubkey_x25519"))                 PRINT_AND_RETURN("\"7a8d1961ec9d1ac77aa67a2cded9271b0b6b9e4406005b36e260d0a230943b0e\"");
@@ -587,24 +594,21 @@ void Print_CurlExample(std::vector<DeclStruct const *> *global_helper_structs, s
 
 void Print_Variable(std::vector<DeclStruct const *> *global_helper_structs, std::vector<DeclStruct const *> *children_structs, DeclVariable const *variable, int indent_level = 0)
 {
-    bool is_array          = variable->template_expr.len > 0;
     String const *var_type = &variable->type;
-    if (is_array) var_type = &variable->template_expr;
-
-    bool has_converted_type = (variable->metadata.converted_type != nullptr);
-    if (has_converted_type)
+    if (variable->is_array) var_type = &variable->template_expr;
+    if (variable->metadata.converted_type)
       var_type = variable->metadata.converted_type;
 
     Print_Indented(indent_level, stdout);
     fprintf(stdout, " * `%.*s - %.*s", variable->name.len, variable->name.str, var_type->len, var_type->str);
-    if (is_array) fprintf(stdout, "[]");
+    if (variable->is_array && !variable->metadata.is_std_array) fprintf(stdout, "[]");
     if (variable->value.len > 0) fprintf(stdout, " = %.*s", variable->value.len, variable->value.str);
     fprintf(stdout, "`");
 
     if (variable->comment.len > 0) fprintf(stdout, ": %.*s", variable->comment.len, variable->comment.str);
     fprintf(stdout, "\n");
 
-    if (!has_converted_type)
+    if (!variable->metadata.recognised)
     {
         DeclStruct const *resolved_decl = LookupTypeDefinition(global_helper_structs, children_structs, *var_type);
         if (resolved_decl)
@@ -1017,6 +1021,13 @@ int main(int argc, char *argv[])
     context.declarations.reserve(1024);
     context.alias_declarations.reserve(128);
 
+    struct AliasToCommand
+    {
+        String alias;
+        String command;
+    };
+    std::vector<AliasToCommand> rpc_alias_to_commands;
+
     for (int arg_index = 1; arg_index < argc; arg_index++)
     {
         ptrdiff_t buf_size = 0;
@@ -1026,30 +1037,76 @@ int main(int argc, char *argv[])
         tokeniser.ptr         = buf;
         tokeniser.file        = argv[arg_index];
 
-        while (Tokeniser_NextMarker(&tokeniser, STRING_LIT("LOKI_RPC_DOC_INTROSPECT")))
+        if (strcmp(tokeniser.file, "wallet_rpc_server.h") == 0)
         {
-            DeclStruct decl = {};
-            for (Token comment = {}; Tokeniser_RequireTokenType(&tokeniser, TokenType::comment, &comment);)
+            //
+            // @TODO(doyle): This is pretty kludgy, but is temporary because we will eventually switch over to how Core RPC does name aliasing.
+            //
+            // PARSING SCENARIO
+            //
+            //     MAP_JON_RPC_WE("get_balance",        on_getbalance,         wallet_rpc::COMMAND_RPC_GET_BALANCE)
+            //
+            while (Tokeniser_NextMarker(&tokeniser, STRING_LIT("MAP_JON_RPC_WE")))
             {
-                String comment_lit = Token_String(comment);
-                decl.pre_decl_comments.push_back(comment_lit);
-            }
-
-            Token peek = Tokeniser_PeekToken(&tokeniser);
-            if (peek.type == TokenType::identifier)
-            {
-                String peek_lit = Token_String(peek);
-                if (peek_lit ==  STRING_LIT("struct") || peek_lit == STRING_LIT("class"))
+                bool succeeded           = false;
+                Token wallet_rpc_alias   = {};
+                Token wallet_rpc_command = {};
+                if (Tokeniser_RequireTokenType(&tokeniser, TokenType::open_paren))
                 {
-                    if (Tokeniser_ParseStruct(&tokeniser, &decl, true /*root_struct*/, nullptr /*parent name*/))
-                        context.declarations.push_back(std::move(decl));
+                    if (Tokeniser_RequireTokenType(&tokeniser, TokenType::string, &wallet_rpc_alias)) // "get_balance"
+                    {
+                        if (Tokeniser_RequireTokenType(&tokeniser, TokenType::comma))
+                        {
+                            if (Tokeniser_RequireTokenType(&tokeniser, TokenType::identifier)) // on_getbalance
+                            {
+                                if (Tokeniser_RequireTokenType(&tokeniser, TokenType::comma))
+                                {
+                                    if (Tokeniser_RequireTokenType(&tokeniser, TokenType::identifier)) // wallet_rpc
+                                    {
+                                        if (Tokeniser_RequireTokenType(&tokeniser, TokenType::namespace_colon)) //
+                                        {
+                                            succeeded = Tokeniser_RequireTokenType(&tokeniser, TokenType::identifier, &wallet_rpc_command); // COMMAND_RPC_GET_BALANCE
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (succeeded)
+                    rpc_alias_to_commands.push_back({Token_String(wallet_rpc_alias), Token_String(wallet_rpc_command)});
+                else
+                    Tokeniser_ErrorLastRequiredToken(&tokeniser);
+            }
+        }
+        else
+        {
+            while (Tokeniser_NextMarker(&tokeniser, STRING_LIT("LOKI_RPC_DOC_INTROSPECT")))
+            {
+                DeclStruct decl = {};
+                for (Token comment = {}; Tokeniser_RequireTokenType(&tokeniser, TokenType::comment, &comment);)
+                {
+                    String comment_lit = Token_String(comment);
+                    decl.pre_decl_comments.push_back(comment_lit);
+                }
+
+                Token peek = Tokeniser_PeekToken(&tokeniser);
+                if (peek.type == TokenType::identifier)
+                {
+                    String peek_lit = Token_String(peek);
+                    if (peek_lit ==  STRING_LIT("struct") || peek_lit == STRING_LIT("class"))
+                    {
+                        if (Tokeniser_ParseStruct(&tokeniser, &decl, true /*root_struct*/, nullptr /*parent name*/))
+                            context.declarations.push_back(std::move(decl));
+                    }
+                    else
+                    {
+                    }
                 }
                 else
                 {
                 }
-            }
-            else
-            {
             }
         }
     }
@@ -1200,6 +1257,16 @@ int main(int argc, char *argv[])
             {
                 // NOTE: It appears some light wallet RPC calls are not documented and tagged properly.
                 decl.type = DeclStructType::JsonRPCCommand;
+            }
+        }
+
+        // @TODO(doyle): This is kludgy temp workaround for wallet_rpc, see comment above.
+        for (AliasToCommand const &info : rpc_alias_to_commands)
+        {
+            if (decl.name == info.command)
+            {
+                decl.aliases.push_back(info.alias);
+                break;
             }
         }
     }

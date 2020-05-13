@@ -70,6 +70,11 @@ struct String
 
 struct DeclVariableMetadata
 {
+  // NOTE: For basic primitives like 'bool', this is already recognisable and
+  // doesn't need to be converted to a nicer representation, so we encode that
+  // situation into 'recognised'.
+  bool          is_std_array;
+  bool          recognised;
   String const *converted_type;          // Convert c-isms to more generic pseudo code if available i.e. uint64_t to uint64
   String const *converted_template_expr; // Ditto, but for the contents inside the template expression
 };
