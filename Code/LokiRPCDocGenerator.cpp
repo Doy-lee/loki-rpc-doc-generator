@@ -826,20 +826,26 @@ void GenerateMarkdown(DeclContext *context)
     char const json_anchor[]   = "[JSON](#json)\n";
     char const binary_anchor[] = "[Binary](#binary)\n";
 
-    fprintf(stdout, "## %s", json_anchor);
-    for (DeclStruct const *decl : json_rpc_structs)
-        Print_TableOfContentsEntry(decl->name);
-    fprintf(stdout, "\n");
+    if (json_rpc_structs.size())
+    {
+        fprintf(stdout, "## %s", json_anchor);
+        for (DeclStruct const *decl : json_rpc_structs)
+            Print_TableOfContentsEntry(decl->name);
+        fprintf(stdout, "\n");
+    }
 
     // ---------------------------------------------------------------------------------------------
     //
     // NOTE: Print Table of Contents: Binary Methods
     //
     // ---------------------------------------------------------------------------------------------
-    fprintf(stdout, "## %s", binary_anchor);
-    for (DeclStruct const *decl : binary_rpc_structs)
-        Print_TableOfContentsEntry(decl->name);
-    fprintf(stdout, "\n\n");
+    if (binary_rpc_structs.size())
+    {
+        fprintf(stdout, "## %s", binary_anchor);
+        for (DeclStruct const *decl : binary_rpc_structs)
+            Print_TableOfContentsEntry(decl->name);
+        fprintf(stdout, "\n\n");
+    }
 
 
     // ---------------------------------------------------------------------------------------------
@@ -853,6 +859,9 @@ void GenerateMarkdown(DeclContext *context)
 
     for (const auto &rpc_structs : containers)
     {
+        if (rpc_structs->empty())
+            continue;
+
         fprintf(stdout, "# %s", json_rpc ? json_anchor : binary_anchor);
         for (DeclStruct const *decl : (*rpc_structs))
         {
