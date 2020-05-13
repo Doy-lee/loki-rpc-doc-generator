@@ -124,9 +124,9 @@ bool tokeniser_next_marker(tokeniser_t *tokeniser, string_lit marker)
         if (marker == INTROSPECT_MARKER)
         {
             // NOTE: Sort of hacky. If we're looking for an introspect marker,
-            // we don't care about the state if we're in a function list,
-            // template argument etc, we're likely finished parsing that
-            // C++ construct.
+            // we don't care about the current state if we're in a function
+            // list, template argument etc, we're likely finished parsing that
+            // C++ construct, or trying to leave that context.
             tokeniser->paren_level         = 0;
             tokeniser->scope_level         = 0;
             tokeniser->angle_bracket_level = 0;
@@ -140,19 +140,38 @@ bool tokeniser_next_marker(tokeniser_t *tokeniser, string_lit marker)
     return ptr != nullptr;
 }
 
+// -------------------------------------------------------------------------------------------------
+//
+// Tokeniser Report Error
+//
+// -------------------------------------------------------------------------------------------------
+void tokeniser_report_error_preamble(tokeniser_t *tokeniser)
+{
+    if (tokeniser->file) fprintf(stderr, "Tokenising error in file %s:%d", tokeniser->file, tokeniser->line + 1);
+    else                 fprintf(stderr, "Tokenising error buffer");
+}
+
+void tokeniser_report_parse_struct_custom_error(tokeniser_t *tokeniser, string_lit *parent_name, char const *fmt = nullptr, ...)
+{
+    string_lit line = string_lit_till_eol(tokeniser->last_new_line);
+    tokeniser_report_error_preamble(tokeniser);
+
+    if (parent_name)
+        fprintf(stderr, " in struct '%.*s'", parent_name->len, parent_name->str);
+
+    fprintf(stderr, "\n");
+    va_list va;
+    va_start(va, fmt);
+    vfprintf(stderr, fmt, va);
+    va_end(va);
+
+    fprintf(stderr, "\n\n%.*s\n\n", line.len, line.str);
+}
+
 void tokeniser_report_last_required_token(tokeniser_t *tokeniser, char const *fmt = nullptr, ...)
 {
-    string_lit line = {};
-    if (tokeniser->file)
-    {
-        fprintf(stderr, "Tokenising error in file %s:%d", tokeniser->file, tokeniser->line + 1);
-        line = string_lit_till_eol(tokeniser->last_new_line);
-    }
-    else
-    {
-        fprintf(stderr, "Tokenising error in buffer\n");
-        line = string_lit_till_eol(tokeniser->ptr);
-    }
+    tokeniser_report_error_preamble(tokeniser);
+    string_lit const line = (tokeniser->file) ? string_lit_till_eol(tokeniser->last_new_line) : string_lit_till_eol(tokeniser->ptr);
 
     if (fmt)
     {
@@ -176,18 +195,10 @@ void tokeniser_report_last_required_token(tokeniser_t *tokeniser, char const *fm
 
 void tokeniser_report_custom_error(tokeniser_t *tokeniser, char const *fmt, ...)
 {
-    string_lit line = string_lit_till_eol(tokeniser->last_new_line);
-    if (tokeniser->file)
-    {
-        fprintf(stderr, "Tokenising error in file %s:%d\n", tokeniser->file, tokeniser->line + 1);
-        line = string_lit_till_eol(tokeniser->last_new_line);
-    }
-    else
-    {
-        fprintf(stderr, "Tokenising error buffer\n");
-        line = string_lit_till_eol(tokeniser->ptr);
-    }
+    tokeniser_report_error_preamble(tokeniser);
+    string_lit const line = (tokeniser->file) ? string_lit_till_eol(tokeniser->last_new_line) : string_lit_till_eol(tokeniser->ptr);
 
+    fprintf(stderr, "\n");
     va_list va;
     va_start(va, fmt);
     vfprintf(stderr, fmt, va);
@@ -196,6 +207,11 @@ void tokeniser_report_custom_error(tokeniser_t *tokeniser, char const *fmt, ...)
     fprintf(stderr, "\n\n%.*s\n\n", line.len, line.str);
 }
 
+// -------------------------------------------------------------------------------------------------
+//
+// Tokeniser Iteration
+//
+// -------------------------------------------------------------------------------------------------
 token_t tokeniser_peek_token2(tokeniser_t *tokeniser)
 {
     token_t result = {};
@@ -825,7 +841,10 @@ bool parse_struct(tokeniser_t *tokeniser, decl_struct *result, bool root_struct,
     if (!tokeniser_require_token(tokeniser, STRING_LIT("struct")) &&
         !tokeniser_require_token(tokeniser, STRING_LIT("class")))
     {
-        tokeniser_report_custom_error(tokeniser, "parse_struct called on child struct in '%.*s', expected 'struct' or 'class'", parent_name->len, parent_name->str);
+        tokeniser_report_parse_struct_custom_error(
+            tokeniser,
+            parent_name,
+            "parse_struct called on child struct did not have expected 'struct' or 'class' identifier");
         return false;
     }
 
@@ -871,59 +890,76 @@ bool parse_struct(tokeniser_t *tokeniser, decl_struct *result, bool root_struct,
                 }
                 else if (inheritance_lit == STRING_LIT("public"))
                 {
-#if 0
-                    token_t oop_parent = {};
-                    if (tokeniser_require_token_type(tokeniser, token_type::identifier, &oop_parent))
-                    {
-                        result->inheritance_parent_name = token_to_string_lit(oop_parent);
-                    }
-                    else
-                    {
-                        if (parent_name)
-                        {
-                            tokeniser_report_custom_error(
-                                tokeniser,
-                                "Unrecognized token following 'public %.*s' in 'struct %.*s'",
-                                result->name.len,
-                                result->name.str,
-                                parent_name->len,
-                                parent_name->str);
-                        }
-                        else
-                        {
-                            tokeniser_report_custom_error(tokeniser,
-                                                          "Unrecognized token following 'public %.*s'",
-                                                          result->name.len,
-                                                          result->name.str);
-                        }
-                    }
-#endif
                     // NOTE: Ignore public modifier
                     continue;
                 }
                 else
                 {
-                    if (parent_name)
+                    /*
+                       (POTENTIAL) PARSING SCENARIO
+                       We are parsing inheritance construct. We may or may not
+                       have a namespace, it could directly reference the class.
+
+
+                                           +---- inheritance token
+                                           |
+                                           |        +-+---------------- Tokeniser is in either of these positions (depending on if it is namespaced or not)
+                                           V        V V
+                       struct Foo : public Namespace::Parent { ...  };
+                    */
+
+                    for (token_t next = tokeniser_peek_token2(tokeniser);  // NOTE: Advance tokeniser until end of parent inheritance name
+                         ;
+                         next = tokeniser_next_token(tokeniser))
                     {
-                        tokeniser_report_custom_error(
-                            tokeniser,
-                            "Unrecognized inheritance identifier following struct name '%.*s' in 'struct %.*s', token was '%.*s'",
-                            result->name.len,
-                            result->name.str,
-                            parent_name->len,
-                            parent_name->str,
-                            inheritance.len,
-                            inheritance.str);
+                        if (next.type == token_type::comma)
+                        {
+                            tokeniser_report_parse_struct_custom_error(
+                                tokeniser,
+                                parent_name,
+                                "Encountered commma ',' in inheritance line indicating multiple "
+                                "inheritance which we don't support for arbitrary types yet, unless they're the RPC tags "
+                                "like PUBLIC, BINARY, LEGACY, EMPTY which are handled in the special case");
+                            return false;
+                        }
+
+                        if (next.type == token_type::namespace_colon)
+                        {
+                            if (!tokeniser_require_token_type(tokeniser, token_type::identifier))
+                            {
+                                tokeniser_report_parse_struct_custom_error(
+                                    tokeniser,
+                                    parent_name,
+                                    "Namespace colon '::' should be followed by an identifier in 'struct %.*s'",
+                                    result->name.len,
+                                    result->name.str);
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+
+                    token_t one_after_last_inheritance_name = tokeniser_peek_token2(tokeniser);
+                    if (one_after_last_inheritance_name.type == token_type::left_curly_brace)
+                    {
+                        result->inheritance_parent_name.len     = &one_after_last_inheritance_name.str[-1] - inheritance_lit.str;
+                        result->inheritance_parent_name.str     = inheritance_lit.str;
+                        result->inheritance_parent_name = trim_whitespace_around(result->inheritance_parent_name);
+                        break;
                     }
                     else
                     {
-                        tokeniser_report_custom_error(tokeniser,
-                            "Unrecognized inheritance identifier following struct name '%.*s', token was '%.*s'",
+                        tokeniser_report_parse_struct_custom_error(
+                            tokeniser,
+                            parent_name,
+                            "Detected inheritance identifier '%.*s' following struct name '%.*s'",
+                            result->inheritance_parent_name.len,
+                            result->inheritance_parent_name.str,
                             result->name.len,
-                            result->name.str,
-                            inheritance.len,
-                            inheritance.str
-                            );
+                            result->name.str);
                     }
                 }
 
@@ -982,8 +1018,9 @@ bool parse_struct(tokeniser_t *tokeniser, decl_struct *result, bool root_struct,
         {
             if (!tokeniser_next_marker(tokeniser, STRING_LIT("END_SERIALIZE()")))
             {
-                tokeniser_report_custom_error(
+                tokeniser_report_parse_struct_custom_error(
                     tokeniser,
+                    parent_name,
                     "Tokeniser encountered BEGIN_SERIALIZE() macro, failed to find closing macro END_SERIALIZE()");
                 return false;
             }
@@ -992,8 +1029,9 @@ bool parse_struct(tokeniser_t *tokeniser, decl_struct *result, bool root_struct,
         {
             if (!tokeniser_next_marker(tokeniser, STRING_LIT("END_KV_SERIALIZE_MAP()")))
             {
-                tokeniser_report_custom_error(
+                tokeniser_report_parse_struct_custom_error(
                     tokeniser,
+                    parent_name,
                     "Tokeniser encountered END_KV_SERIALIZE_MAP() macro, failed to find closing macro END_SERIALIZE()");
                 return false;
             }
@@ -1052,7 +1090,11 @@ bool parse_struct(tokeniser_t *tokeniser, decl_struct *result, bool root_struct,
                     name_tokeniser.file        = tokeniser->file;
                     if (!parse_rpc_alias_names(&name_tokeniser, result))
                     {
-                        tokeniser_report_custom_error(tokeniser, "Failed to parse RPC names in struct '%.*s'", result->name.len, result->name.str);
+                        tokeniser_report_parse_struct_custom_error(tokeniser,
+                                                                   parent_name,
+                                                                   "Failed to parse RPC names in struct '%.*s'",
+                                                                   result->name.len,
+                                                                   result->name.str);
                         return false;
                     }
                 }
@@ -1511,7 +1553,124 @@ void fprint_string_and_escape_with_backslash(FILE *file, string_lit const *strin
   }
 }
 
-void generate_markdown(decl_context const *context)
+decl_struct *find_decl_struct(decl_context *context, string_lit name)
+{
+    decl_struct *result = nullptr;
+    for (auto &decl : context->declarations)
+    {
+        if (decl.name == name)
+        {
+            result = &decl;
+            break;
+        }
+    }
+
+    return result;
+}
+
+decl_struct *find_decl_struct_in_children(decl_struct *src, string_lit name)
+{
+    decl_struct *result = nullptr;
+    for (auto &child : src->inner_structs)
+    {
+        if (child.name == name)
+        {
+            result = &child;
+            break;
+        }
+    }
+
+    return result;
+}
+
+decl_struct *find_decl_struct_inheritance_parent(decl_context *context, decl_struct const *src)
+{
+    // NOTE: We have something of the sort,
+    //
+    //                         +---------- Inheritance Parent Name
+    //                         V
+    //     struct Foo : public Namespace::FooParent
+    //
+
+    decl_struct *result = nullptr;
+    if (src->inheritance_parent_name.len == 0)
+        return result;
+
+    tokeniser_t tokeniser = {};
+    tokeniser.ptr         = src->inheritance_parent_name.str_;
+
+    token_t namespace_token = {};
+    if (!tokeniser_require_token_type(&tokeniser, token_type::identifier, &namespace_token))
+    {
+        tokeniser_report_last_required_token(&tokeniser);
+        return result;
+    }
+
+    if (decl_struct *namespace_struct = find_decl_struct(context, token_to_string_lit(namespace_token)))
+    {
+        if (tokeniser_require_token_type(&tokeniser, token_type::namespace_colon))
+        {
+            token_t namespace_child = {};
+            if (!tokeniser_require_token_type(&tokeniser, token_type::identifier, &namespace_child))
+            {
+                tokeniser_report_last_required_token(&tokeniser);
+                return result;
+            }
+
+            if (decl_struct *child_struct = find_decl_struct_in_children(namespace_struct, token_to_string_lit(namespace_child)))
+            {
+                // NOTE: Hurray, found the parent struct this struct
+                // inherits referencing, patch the pointer!
+                result = child_struct;
+            }
+        }
+        else
+        {
+            // NOTE: No namespace colon, so we just assume that the
+            // parent was specified without a namespace, which
+            // means, we've already found the parent that this
+            // struct inherits from.
+            result = namespace_struct;
+        }
+    }
+
+    return result;
+}
+
+
+#if 0
+bool fprint_struct_variables(decl_context *context,
+                             std::vector<decl_struct const *> *visible_helper_structs,
+                             decl_struct *src)
+{
+    // NOTE: Print parent
+    if (response->inheritance_parent.len)
+    {
+        if (decl_struct *parent = find_decl_struct_inheritance_parent(context, response))
+        {
+            for (decl_var const &variable : parent->variables)
+                fprint_variable(&global_helper_structs, &rpc_helper_structs, &variable);
+        }
+        else
+        {
+            fprintf(stderr,
+                    "Failed to find the parent child_structaration that 'struct %.*s' inherits from, we were searching for '%.*s'", child_struct.name.len,
+                    child_struct.name.str,
+                    child_struct.inheritance_parent_name.len,
+                    child_struct.inheritance_parent_name.str);
+            return false;
+        }
+    }
+
+    // NOTE: Print struct
+    for (decl_var const &variable : response->variables)
+        fprint_variable(&global_helper_structs, &rpc_helper_structs, &variable);
+
+    return true;
+}
+#endif
+
+void generate_markdown(decl_context *context)
 {
     time_t now;
     time(&now);
@@ -1591,6 +1750,15 @@ void generate_markdown(decl_context const *context)
             }
         }
 
+        if (!request)
+        {
+            for (auto const &variable : global_decl.variables)
+            {
+                if (variable.aliases_to != &UNRESOLVED_ALIAS_STRUCT && variable.name == STRING_LIT("request"))
+                    request = variable.aliases_to;
+            }
+        }
+
         if (!(request && response))
         {
             fprintf(stderr, "Generating markdown error, the struct '%.*s' was marked as a RPC command but we could not find a RPC request/response for it.\n", global_decl.name.len, global_decl.name.str);
@@ -1663,12 +1831,46 @@ void generate_markdown(decl_context const *context)
 
         fprintf(stdout, "**Inputs:**\n");
         fprintf(stdout, "\n");
+        if (request->inheritance_parent_name.len) // @TODO(doyle): Recursive inheritance
+        {
+            if (decl_struct *parent = find_decl_struct_inheritance_parent(context, request))
+            {
+                for (decl_var const &variable : parent->variables)
+                    fprint_variable(&global_helper_structs, &rpc_helper_structs, &variable);
+            }
+            else
+            {
+                fprintf(stderr,
+                        "Failed to find the parent child_structaration that 'struct %.*s' inherits from, we were searching for '%.*s'", request->name.len,
+                        request->name.str,
+                        request->inheritance_parent_name.len,
+                        request->inheritance_parent_name.str);
+                return;
+            }
+        }
         for (decl_var const &variable : request->variables)
             fprint_variable(&global_helper_structs, &rpc_helper_structs, &variable);
         fprintf(stdout, "\n");
 
         fprintf(stdout, "**Outputs:**\n");
         fprintf(stdout, "\n");
+        if (response->inheritance_parent_name.len)
+        {
+            if (decl_struct *parent = find_decl_struct_inheritance_parent(context, response))
+            {
+                for (decl_var const &variable : parent->variables)
+                    fprint_variable(&global_helper_structs, &rpc_helper_structs, &variable);
+            }
+            else
+            {
+                fprintf(stderr,
+                        "Failed to find the parent child_structaration that 'struct %.*s' inherits from, we were searching for '%.*s'", response->name.len,
+                        response->name.str,
+                        response->inheritance_parent_name.len,
+                        response->inheritance_parent_name.str);
+                return;
+            }
+        }
         for (decl_var const &variable : response->variables)
             fprint_variable(&global_helper_structs, &rpc_helper_structs, &variable);
         fprintf(stdout, "\n\n");
@@ -1677,30 +1879,13 @@ void generate_markdown(decl_context const *context)
     fprintf(stdout, "\n");
 }
 
-char *next_token(char *src)
-{
-    char *result = src;
-    while (result && isspace(result[0])) result++;
-    return result;
-}
-
 int main(int argc, char *argv[])
 {
     decl_context context = {};
     context.declarations.reserve(1024);
     context.alias_declarations.reserve(128);
 
-    struct name_to_alias
-    {
-      string_lit name;
-      string_lit alias;
-    };
-    std::vector<name_to_alias> struct_rpc_aliases;
-    struct_rpc_aliases.reserve(128);
-
-    std::vector<token_t> token_list;
-    token_list.reserve(16384);
-    for (int arg_index = 1; arg_index < argc; arg_index++, token_list.clear())
+    for (int arg_index = 1; arg_index < argc; arg_index++)
     {
         ptrdiff_t buf_size = 0;
         char *buf          = read_entire_file(argv[arg_index], &buf_size);
@@ -1750,7 +1935,7 @@ int main(int argc, char *argv[])
         // @TODO(doyle): We should store the pointers to the response/request
         // here since we already do the work to enumerate and patch it.
         int response = 0, request = 0;
-        for (auto const &child_struct : decl.inner_structs)
+        for (auto &child_struct : decl.inner_structs)
         {
             if (child_struct.name == STRING_LIT("response"))
                 response++;
@@ -1768,49 +1953,6 @@ int main(int argc, char *argv[])
                     request++;
             }
         }
-
-#if 0
-        if (result->inheritance_parent_name.len)
-        {
-            for (auto &other_struct : context.declarations)
-            {
-                if (other_struct.name == result->inheritance_parent_name)
-                {
-                    if (!tokeniser_require_token_type(&tokeniser, token_type::namespace_colon))
-                    {
-                        tokeniser_report_last_required_token(&tokeniser);
-                        return false;
-                    }
-
-                    token_t namespace_child = {};
-                    if (!tokeniser_require_token_type(&tokeniser, token_type::identifier, &namespace_child))
-                    {
-                        tokeniser_report_last_required_token(&tokeniser);
-                        return false;
-                    }
-
-                    for (auto &inner_struct : other_struct.inner_structs)
-                    {
-                        if (inner_struct.name == token_to_string_lit(namespace_child))
-                        {
-                            // NOTE: Hurray, found the struct this
-                            // variable was referencing, patch the
-                            // pointer!
-                            variable.aliases_to = &inner_struct;
-                            break;
-                        }
-                    }
-
-                    if (variable.aliases_to == &UNRESOLVED_ALIAS_STRUCT)
-                    {
-                        string_lit eol_string = string_lit_till_eol(variable.name.str);
-                        fprintf(stderr, "Failed to resolve C++ using alias to a declaration '%.*s'", eol_string.len, eol_string.str);
-                        return false;
-                    }
-                }
-            }
-        }
-#endif
 
         for (auto &variable : decl.variables)
         {
