@@ -89,7 +89,8 @@ struct DeclVariable
 enum DeclStructType
 {
     Invalid,
-    RPCCommand,
+    JsonRPCCommand,
+    BinaryRPCCommand,
     RPCRequest,
     RPCResponse,
     Helper,
@@ -101,7 +102,6 @@ struct DeclStruct
   std::vector<String>       pre_decl_comments;
   String                    inheritance_parent_name;
   DeclStructType            type;
-  String                    description;
   String                    name;
   std::vector<DeclStruct>   inner_structs;
   std::vector<DeclVariable> variables;

@@ -1,12 +1,3 @@
-struct Token
-{
-  int        new_lines_encountered;
-  char      *last_new_line;
-  char      *str;
-  int        len;
-  TokenType type;
-};
-
 #define X_MACRO \
     X_ENTRY(invalid, "XX INVALID") \
     X_ENTRY(left_curly_brace, "{") \
@@ -45,6 +36,15 @@ String const TokenType_string[] =
 };
 #undef X_ENTRY
 #undef X_MACRO
+
+struct Token
+{
+  int        new_lines_encountered;
+  char      *last_new_line;
+  char      *str;
+  int        len;
+  TokenType type;
+};
 
 struct Tokeniser
 {
@@ -576,6 +576,75 @@ bool Tokeniser_ParseRPCAliasNamess(Tokeniser *tokeniser, DeclStruct *result)
     }
 }
 
+static DeclVariableMetadata DeriveVariableMetadata(DeclVariable const *variable)
+{
+  DeclVariableMetadata result  = {};
+  String const var_type = (variable->is_array) ? variable->template_expr : variable->type;
+
+  if (var_type == STRING_LIT("std::string"))
+  {
+    local_persist String const NICE_NAME = STRING_LIT("string");
+    result.converted_type = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("uint64_t"))
+  {
+    local_persist String const NICE_NAME = STRING_LIT("uint64");
+    result.converted_type                    = &NICE_NAME;
+
+  }
+  else if (var_type == STRING_LIT("uint32_t"))
+  {
+    local_persist String const NICE_NAME = STRING_LIT("uint32");
+    result.converted_type                    = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("uint16_t"))
+  {
+    local_persist String const NICE_NAME = STRING_LIT("uint16");
+    result.converted_type = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("uint8_t"))
+  {
+    local_persist String const NICE_NAME = STRING_LIT("uint8");
+    result.converted_type = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("int64_t"))
+  {
+    local_persist String const NICE_NAME = STRING_LIT("int64");
+    result.converted_type                    = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("int32_t"))
+  {
+    local_persist String const NICE_NAME = STRING_LIT("int32");
+    result.converted_type                    = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("int16_t"))
+  {
+    local_persist String const NICE_NAME = STRING_LIT("int16");
+    result.converted_type = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("int8_t"))
+  {
+    local_persist String const NICE_NAME = STRING_LIT("int8");
+    result.converted_type = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("blobdata"))
+  {
+      local_persist String const NICE_NAME = STRING_LIT("string");
+      result.converted_type                    = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("crypto::hash"))
+  {
+      local_persist String const NICE_NAME = STRING_LIT("string[64]");
+      result.converted_type                    = &NICE_NAME;
+  }
+  else if (var_type == STRING_LIT("difficulty_type"))
+  {
+      local_persist String const NICE_NAME = STRING_LIT("uint64");
+      result.converted_type                    = &NICE_NAME;
+  }
+  return result;
+};
+
 enum struct Tokeniser_ParseTypeAndNameStatus
 {
     NotVariable,
@@ -596,7 +665,7 @@ Tokeniser_ParseTypeAndNameStatus Tokeniser_Tokeniser_ParseTypeAndName(Tokeniser 
         for (;;) // ignore type modifiers like const and static
         {
             Token next = Tokeniser_NextToken(tokeniser);
-            if (!is_type_modifier(next))
+            if (!Token_IsCPPTypeModifier(next))
             {
                 token = next;
                 break;
@@ -651,7 +720,7 @@ Tokeniser_ParseTypeAndNameStatus Tokeniser_Tokeniser_ParseTypeAndName(Tokeniser 
         Token variable_name = variable_type_one_past_last_token;
         for (;;) // ignore type modifiers like const and static
         {
-            if (!is_type_modifier(variable_name))
+            if (!Token_IsCPPTypeModifier(variable_name))
                 break;
             variable_name = Tokeniser_NextToken(tokeniser);
         }
@@ -771,9 +840,6 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
         }
     }
 
-    if (result->type == DeclStructType::Invalid)
-        result->type = DeclStructType::Helper;
-
     if (Tokeniser_RequireTokenType(tokeniser, TokenType::colon)) // Struct Inheritance
     {
         for (;;)
@@ -782,11 +848,13 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
             if (Tokeniser_RequireTokenType(tokeniser, TokenType::identifier, &inheritance))
             {
                 String inheritance_lit = Token_String(inheritance);
-                if (inheritance_lit == STRING_LIT("PUBLIC")) { }
-                else if (inheritance_lit == STRING_LIT("BINARY")) { }
-                else if (inheritance_lit == STRING_LIT("LEGACY")) { }
+                if (inheritance_lit == STRING_LIT("PUBLIC"))
+                {
+                }
+                else if (inheritance_lit == STRING_LIT("BINARY")) result->type = DeclStructType::BinaryRPCCommand;
+                else if (inheritance_lit == STRING_LIT("LEGACY")) result->type = DeclStructType::JsonRPCCommand;
                 else if (inheritance_lit == STRING_LIT("EMPTY")) { }
-                else if (inheritance_lit == STRING_LIT("RPC_COMMAND")) { }
+                else if (inheritance_lit == STRING_LIT("RPC_COMMAND")) result->type = DeclStructType::JsonRPCCommand;
                 else if (inheritance_lit == STRING_LIT("STATUS"))
                 {
                     // @TODO(doyle):
@@ -877,6 +945,9 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
         }
     }
 
+    if (result->type == DeclStructType::Invalid)
+        result->type = DeclStructType::Helper;
+
     int original_scope_level = tokeniser->scope_level;
     if (!Tokeniser_RequireTokenType(tokeniser, TokenType::left_curly_brace, nullptr))
     {
@@ -951,13 +1022,12 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
                     Token using_value_one_past_last_token = {};
                     Tokeniser_AdvanceToTokenType(tokeniser, TokenType::semicolon, &using_value_one_past_last_token);
 
-                    String using_value = {using_value_first_token.str,
-                                              (int)(&using_value_one_past_last_token.str[-1] - using_value_first_token.str)};
-
-                    DeclVariable variable   = {};
+                    auto using_value = String(using_value_first_token.str, using_value_one_past_last_token.str - using_value_first_token.str);
+                    DeclVariable variable = {};
                     variable.aliases_to = &UNRESOLVED_ALIAS_STRUCT; // NOTE: Resolve the declaration later
                     variable.name       = Token_String(using_name);
                     variable.type       = String_TrimWhitespaceAround(using_value);
+                    variable.metadata   = DeriveVariableMetadata(&variable);
 
                     Token comment = {};
                     if (Tokeniser_RequireTokenType(tokeniser, TokenType::comment, &comment))
