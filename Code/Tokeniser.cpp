@@ -29,8 +29,8 @@ enum struct TokenType
 };
 #undef X_ENTRY
 
-#define X_ENTRY(enum_val, stringified) STRING_LIT(stringified),
-String const TokenType_string[] =
+#define X_ENTRY(enum_val, stringified) DQN_STRING_LITERAL(stringified),
+Dqn_String const TokenType_string[] =
 {
     X_MACRO
 };
@@ -42,7 +42,7 @@ struct Token
   int        new_lines_encountered;
   char      *last_new_line;
   char      *str;
-  int        len;
+  int        size;
   TokenType type;
 };
 
@@ -56,9 +56,9 @@ struct Tokeniser
     int   paren_level;
     int   angle_bracket_level;
 
-    String    last_required_token_lit;
-    TokenType last_required_TokenType;
-    Token     last_received_token;
+    Dqn_String last_required_token_lit;
+    TokenType  last_required_TokenType;
+    Token      last_received_token;
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -66,29 +66,30 @@ struct Tokeniser
 // Token
 //
 // -------------------------------------------------------------------------------------------------
-String Token_String(Token token)
+Dqn_String Token_String(Token token)
 {
-    String result = {token.str, token.len};
+    Dqn_String result = Dqn_String_Init(token.str, token.size);
     return result;
 }
 
-bool Token_IsEOF(Token token)
+b32 Token_IsEOF(Token token)
 {
-    bool result = token.type == TokenType::end_of_stream;
+    b32 result = token.type == TokenType::end_of_stream;
     return result;
 }
 
-bool Token_IsCPPTypeModifier(Token token)
+b32 Token_IsCPPTypeModifier(Token token)
 {
-    static String const modifiers[] = {
-        STRING_LIT("constexpr"),
-        STRING_LIT("const"),
-        STRING_LIT("static"),
+    static Dqn_String const modifiers[] = {
+        DQN_STRING_LITERAL("constexpr"),
+        DQN_STRING_LITERAL("const"),
+        DQN_STRING_LITERAL("static"),
     };
 
-    for (String const &mod : modifiers)
+    for (Dqn_String const &mod : modifiers)
     {
-        if (Token_String(token) == mod) return true;
+        if (Token_String(token) == mod)
+            return true;
     }
 
   return false;
@@ -105,13 +106,13 @@ void Tokeniser_ErrorPreamble(Tokeniser *tokeniser)
     else                 fprintf(stderr, "Tokenising error buffer");
 }
 
-void Tokeniser_ErrorParseStruct(Tokeniser *tokeniser, String *parent_name, char const *fmt = nullptr, ...)
+void Tokeniser_ErrorParseStruct(Tokeniser *tokeniser, Dqn_String *parent_name, char const *fmt = nullptr, ...)
 {
-    String line = String_TillEOL(tokeniser->last_new_line);
+    Dqn_String line = String_TillEOL(tokeniser->last_new_line);
     Tokeniser_ErrorPreamble(tokeniser);
 
     if (parent_name)
-        fprintf(stderr, " in struct '%.*s'", parent_name->len, parent_name->str);
+        fprintf(stderr, " in struct '%.*s'", (int)parent_name->size, parent_name->str);
 
     fprintf(stderr, "\n");
     va_list va;
@@ -119,13 +120,13 @@ void Tokeniser_ErrorParseStruct(Tokeniser *tokeniser, String *parent_name, char 
     vfprintf(stderr, fmt, va);
     va_end(va);
 
-    fprintf(stderr, "\n\n%.*s\n\n", line.len, line.str);
+    fprintf(stderr, "\n\n%.*s\n\n", (int)line.size, line.str);
 }
 
 void Tokeniser_ErrorLastRequiredToken(Tokeniser *tokeniser, char const *fmt = nullptr, ...)
 {
     Tokeniser_ErrorPreamble(tokeniser);
-    String const line = (tokeniser->file) ? String_TillEOL(tokeniser->last_new_line) : String_TillEOL(tokeniser->ptr);
+    Dqn_String const line = (tokeniser->file) ? String_TillEOL(tokeniser->last_new_line) : String_TillEOL(tokeniser->ptr);
 
     if (fmt)
     {
@@ -139,18 +140,18 @@ void Tokeniser_ErrorLastRequiredToken(Tokeniser *tokeniser, char const *fmt = nu
     fprintf(stderr,
             "\nThe last required token was \"%.*s\", tokeniser received \"%.*s\"\n\n"
             "%.*s\n\n",
-            TokenType_string[(int)tokeniser->last_required_TokenType].len,
+            (int)TokenType_string[(int)tokeniser->last_required_TokenType].size,
             TokenType_string[(int)tokeniser->last_required_TokenType].str,
-            tokeniser->last_received_token.len,
+            (int)tokeniser->last_received_token.size,
             tokeniser->last_received_token.str,
-            line.len,
+            (int)line.size,
             line.str);
 }
 
 void Tokeniser_ReportCustomError(Tokeniser *tokeniser, char const *fmt, ...)
 {
     Tokeniser_ErrorPreamble(tokeniser);
-    String const line = (tokeniser->file) ? String_TillEOL(tokeniser->last_new_line) : String_TillEOL(tokeniser->ptr);
+    Dqn_String const line = (tokeniser->file) ? String_TillEOL(tokeniser->last_new_line) : String_TillEOL(tokeniser->ptr);
 
     fprintf(stderr, "\n");
     va_list va;
@@ -158,7 +159,7 @@ void Tokeniser_ReportCustomError(Tokeniser *tokeniser, char const *fmt, ...)
     vfprintf(stderr, fmt, va);
     va_end(va);
 
-    fprintf(stderr, "\n\n%.*s\n\n", line.len, line.str);
+    fprintf(stderr, "\n\n%.*s\n\n", (int)line.size, line.str);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -166,8 +167,8 @@ void Tokeniser_ReportCustomError(Tokeniser *tokeniser, char const *fmt, ...)
 // Tokeniser Iteration
 //
 // -------------------------------------------------------------------------------------------------
-auto const INTROSPECT_MARKER = STRING_LIT("LOKI_RPC_DOC_INTROSPECT");
-bool Tokeniser_NextMarker(Tokeniser *tokeniser, String marker)
+Dqn_String const INTROSPECT_MARKER = DQN_STRING_LITERAL("LOKI_RPC_DOC_INTROSPECT");
+b32 Tokeniser_NextMarker(Tokeniser *tokeniser, Dqn_String marker)
 {
     char *last_new_line = nullptr;
     int num_new_lines   = 0;
@@ -188,7 +189,7 @@ bool Tokeniser_NextMarker(Tokeniser *tokeniser, String marker)
 
         tokeniser->line         += num_new_lines;
         tokeniser->last_new_line = last_new_line;
-        tokeniser->ptr           = ptr + marker.len;
+        tokeniser->ptr           = ptr + marker.size;
     }
 
     return ptr != nullptr;
@@ -210,7 +211,7 @@ Token Tokeniser_PeekToken(Tokeniser *tokeniser)
     }
 
     result.str = ptr;
-    result.len = 1;
+    result.size = 1;
     switch (result.str[0])
     {
         case '{': result.type = TokenType::left_curly_brace; break;
@@ -234,7 +235,7 @@ Token Tokeniser_PeekToken(Tokeniser *tokeniser)
           result.str  = ++ptr;
           while (ptr[0] != '"')
             ptr++;
-          result.len = static_cast<int>(ptr - result.str);
+          result.size = static_cast<int>(ptr - result.str);
           ptr++;
         }
         break;
@@ -246,7 +247,7 @@ Token Tokeniser_PeekToken(Tokeniser *tokeniser)
           {
             ptr++;
             result.type = TokenType::namespace_colon;
-            result.len  = 2;
+            result.size  = 2;
           }
         }
         break;
@@ -274,7 +275,7 @@ Token Tokeniser_PeekToken(Tokeniser *tokeniser)
 
               while (ptr[0] != '\n')
                 ptr++;
-              result.len = static_cast<int>(ptr - result.str);
+              result.size = static_cast<int>(ptr - result.str);
             }
             else
             {
@@ -286,7 +287,7 @@ Token Tokeniser_PeekToken(Tokeniser *tokeniser)
                 ptr++;
                 if (ptr[0] == '/')
                 {
-                  result.len = static_cast<int>(ptr - result.str - 2);
+                  result.size = static_cast<int>(ptr - result.str - 2);
                   ptr++;
                   break;
                 }
@@ -298,22 +299,22 @@ Token Tokeniser_PeekToken(Tokeniser *tokeniser)
 
         default:
         {
-          if (Char_IsAlpha(ptr[0]) || ptr[0] == '_' || ptr[0] == '!')
+          if (Dqn_Char_IsAlpha(ptr[0]) || ptr[0] == '_' || ptr[0] == '!')
           {
             ptr++;
-            while (Char_IsAlphanum(ptr[0]) || ptr[0] == '_')
+            while (Dqn_Char_IsAlphaNum(ptr[0]) || ptr[0] == '_')
               ptr++;
             result.type = TokenType::identifier;
           }
-          else if(Char_IsDigit(ptr[0]))
+          else if(Dqn_Char_IsDigit(ptr[0]))
           {
             ptr++;
-            while (Char_IsDigit(ptr[0]) || ptr[0] == '_')
+            while (Dqn_Char_IsDigit(ptr[0]) || ptr[0] == '_')
               ptr++;
             result.type = TokenType::number;
           }
 
-          result.len = static_cast<int>(ptr - result.str);
+          result.size = static_cast<int>(ptr - result.str);
         }
         break;
     }
@@ -356,7 +357,7 @@ void Tokeniser_AcceptToken(Tokeniser *tokeniser, Token token)
     assert(tokeniser->paren_level >= 0);
     assert(tokeniser->scope_level >= 0);
     assert(tokeniser->angle_bracket_level >= 0);
-    tokeniser->ptr = token.str + token.len;
+    tokeniser->ptr = token.str + token.size;
 
     if (!tokeniser->last_new_line) tokeniser->last_new_line = token.str;
     if (token.new_lines_encountered) tokeniser->last_new_line = token.last_new_line;
@@ -366,26 +367,26 @@ void Tokeniser_AcceptToken(Tokeniser *tokeniser, Token token)
         tokeniser->ptr++; // Include the ending quotation mark " of a "string"
 }
 
-bool Tokeniser_RequireTokenType(Tokeniser *tokeniser, TokenType type, Token *token = nullptr)
+b32 Tokeniser_RequireTokenType(Tokeniser *tokeniser, TokenType type, Token *token = nullptr)
 {
     Token token_ = {};
     if (!token) token = &token_;
-    *token                              = Tokeniser_PeekToken(tokeniser);
+    *token                             = Tokeniser_PeekToken(tokeniser);
     tokeniser->last_required_TokenType = type;
-    tokeniser->last_received_token      = *token;
-    bool result = (token->type == type);
+    tokeniser->last_received_token     = *token;
+    b32 result                         = (token->type == type);
     if (result) Tokeniser_AcceptToken(tokeniser, *token);
     return result;
 }
 
-bool Tokeniser_RequireToken(Tokeniser *tokeniser, String string, Token *token = nullptr)
+b32 Tokeniser_RequireToken(Tokeniser *tokeniser, Dqn_String string, Token *token = nullptr)
 {
     Token token_ = {};
     if (!token) token = &token_;
     *token                              = Tokeniser_PeekToken(tokeniser);
     tokeniser->last_required_TokenType = token->type;
     tokeniser->last_received_token      = *token;
-    bool result = (Token_String(*token) == string);
+    b32 result = (Token_String(*token) == string);
     if (result) Tokeniser_AcceptToken(tokeniser, *token);
     return result;
 }
@@ -397,7 +398,7 @@ Token Tokeniser_NextToken(Tokeniser *tokeniser)
     return result;
 }
 
-bool Tokeniser_AdvanceToTokenType(Tokeniser *tokeniser, TokenType type, Token *token = nullptr)
+b32 Tokeniser_AdvanceToTokenType(Tokeniser *tokeniser, TokenType type, Token *token = nullptr)
 {
 
     Token token_ = {};
@@ -410,7 +411,7 @@ bool Tokeniser_AdvanceToTokenType(Tokeniser *tokeniser, TokenType type, Token *t
     }
 }
 
-bool Tokeniser_AdvanceToScopeLevel(Tokeniser *tokeniser, int scope_level)
+b32 Tokeniser_AdvanceToScopeLevel(Tokeniser *tokeniser, int scope_level)
 {
     for (;;)
     {
@@ -420,7 +421,7 @@ bool Tokeniser_AdvanceToScopeLevel(Tokeniser *tokeniser, int scope_level)
     }
 }
 
-bool Tokeniser_AdvanceToParenLevel(Tokeniser *tokeniser, int paren_level)
+b32 Tokeniser_AdvanceToParenLevel(Tokeniser *tokeniser, int paren_level)
 {
     for (;;)
     {
@@ -435,7 +436,7 @@ bool Tokeniser_AdvanceToParenLevel(Tokeniser *tokeniser, int paren_level)
 // Tokeniser Parsing
 //
 // -------------------------------------------------------------------------------------------------
-bool Tokeniser_ParseFuctionStartFromName(Tokeniser *tokeniser)
+b32 Tokeniser_ParseFuctionStartFromName(Tokeniser *tokeniser)
 {
     // NOTE: This function *should* be able to handle constructors and free standing functions (probably).
 
@@ -464,7 +465,6 @@ bool Tokeniser_ParseFuctionStartFromName(Tokeniser *tokeniser)
             // @TODO(doyle): Logging
             return false;
         }
-
     }
 
     // NOTE: Remove const from any member functions
@@ -533,9 +533,11 @@ bool Tokeniser_ParseFuctionStartFromName(Tokeniser *tokeniser)
         // @TODO(doyle): What case is this? No idea
         return false;
     }
+
+    return true;
 }
 
-bool Tokeniser_ParseRPCAliasNamess(Tokeniser *tokeniser, DeclStruct *result)
+b32 Tokeniser_ParseRPCAliasNamess(Tokeniser *tokeniser, DeclStruct *result)
 {
     /*
        PARSING SCENARIO
@@ -553,10 +555,10 @@ bool Tokeniser_ParseRPCAliasNamess(Tokeniser *tokeniser, DeclStruct *result)
     if (!Tokeniser_RequireTokenType(tokeniser, TokenType::left_curly_brace))
         return false;
 
-    if (!Tokeniser_RequireToken(tokeniser, STRING_LIT("return")))
+    if (!Tokeniser_RequireToken(tokeniser, DQN_STRING_LITERAL("return")))
         return false;
 
-    if (!Tokeniser_RequireToken(tokeniser, STRING_LIT("NAMES")))
+    if (!Tokeniser_RequireToken(tokeniser, DQN_STRING_LITERAL("NAMES")))
         return false;
 
     if (!Tokeniser_RequireTokenType(tokeniser, TokenType::open_paren))
@@ -582,97 +584,97 @@ bool Tokeniser_ParseRPCAliasNamess(Tokeniser *tokeniser, DeclStruct *result)
 static DeclVariableMetadata DeriveVariableMetadata(DeclVariable *variable)
 {
   DeclVariableMetadata result  = {};
-  String const var_type = (variable->is_array) ? variable->template_expr : variable->type;
+  Dqn_String const var_type = (variable->is_array) ? variable->template_expr : variable->type;
 
-  if (variable->type == STRING_LIT("std::array<int, 3>"))
+  if (variable->type == DQN_STRING_LITERAL("std::array<int, 3>"))
   {
       // @TODO(doyle): Yes, I know .. not cool. This can be improved by
       // constructing the tokeniser inplace and decoding the template.
-      local_persist String const NICE_NAME = STRING_LIT("int[3]");
-      result.is_std_array                  = true;
-      result.converted_type                = &NICE_NAME;
+      LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("int[3]");
+      result.is_std_array                      = true;
+      result.converted_type                    = &NICE_NAME;
   }
-  else if (variable->type == STRING_LIT("std::array<uint16_t, 3>"))
+  else if (variable->type == DQN_STRING_LITERAL("std::array<uint16_t, 3>"))
   {
       // @TODO(doyle): Yes, I know .. not cool. This can be improved by
       // constructing the tokeniser inplace and decoding the template.
-      local_persist String const NICE_NAME = STRING_LIT("uint16[3]");
+      LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("uint16[3]");
       result.is_std_array                  = true;
       result.converted_type                = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("std::string"))
+  else if (var_type == DQN_STRING_LITERAL("std::string"))
   {
-    local_persist String const NICE_NAME = STRING_LIT("string");
+    LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("string");
     result.converted_type = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("uint64_t") || var_type == STRING_LIT("std::uint64_t"))
+  else if (var_type == DQN_STRING_LITERAL("uint64_t") || var_type == DQN_STRING_LITERAL("std::uint64_t"))
   {
-    local_persist String const NICE_NAME = STRING_LIT("uint64");
+    LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("uint64");
     result.converted_type                    = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("size_t"))
+  else if (var_type == DQN_STRING_LITERAL("size_t"))
   {
-    local_persist String const NICE_NAME = STRING_LIT("uint64");
+    LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("uint64");
     result.converted_type                    = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("uint32_t"))
+  else if (var_type == DQN_STRING_LITERAL("uint32_t"))
   {
-    local_persist String const NICE_NAME = STRING_LIT("uint32");
+    LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("uint32");
     result.converted_type                    = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("uint16_t"))
+  else if (var_type == DQN_STRING_LITERAL("uint16_t"))
   {
-    local_persist String const NICE_NAME = STRING_LIT("uint16");
+    LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("uint16");
     result.converted_type = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("uint8_t"))
+  else if (var_type == DQN_STRING_LITERAL("uint8_t"))
   {
-    local_persist String const NICE_NAME = STRING_LIT("uint8");
+    LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("uint8");
     result.converted_type = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("int64_t"))
+  else if (var_type == DQN_STRING_LITERAL("int64_t"))
   {
-    local_persist String const NICE_NAME = STRING_LIT("int64");
+    LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("int64");
     result.converted_type                    = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("int32_t") || var_type == STRING_LIT("int"))
+  else if (var_type == DQN_STRING_LITERAL("int32_t") || var_type == DQN_STRING_LITERAL("int"))
   {
-    local_persist String const NICE_NAME = STRING_LIT("int32");
+    LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("int32");
     result.converted_type                    = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("int16_t"))
+  else if (var_type == DQN_STRING_LITERAL("int16_t"))
   {
-    local_persist String const NICE_NAME = STRING_LIT("int16");
+    LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("int16");
     result.converted_type = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("int8_t"))
+  else if (var_type == DQN_STRING_LITERAL("int8_t"))
   {
-    local_persist String const NICE_NAME = STRING_LIT("int8");
+    LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("int8");
     result.converted_type = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("blobdata"))
+  else if (var_type == DQN_STRING_LITERAL("blobdata"))
   {
-      local_persist String const NICE_NAME = STRING_LIT("string");
+      LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("string");
       result.converted_type                    = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("crypto::hash") ||
-           var_type == STRING_LIT("crypto::public_key") ||
-           var_type == STRING_LIT("rct::key"))
+  else if (var_type == DQN_STRING_LITERAL("crypto::hash") ||
+           var_type == DQN_STRING_LITERAL("crypto::public_key") ||
+           var_type == DQN_STRING_LITERAL("rct::key"))
   {
-      local_persist String const NICE_NAME = STRING_LIT("string[64]");
+      LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("string[64]");
       result.converted_type                    = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("crypto::signature"))
+  else if (var_type == DQN_STRING_LITERAL("crypto::signature"))
   {
-      local_persist String const NICE_NAME = STRING_LIT("string[128]");
+      LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("string[128]");
       result.converted_type                    = &NICE_NAME;
   }
-  else if (var_type == STRING_LIT("difficulty_type"))
+  else if (var_type == DQN_STRING_LITERAL("difficulty_type"))
   {
-      local_persist String const NICE_NAME = STRING_LIT("uint64");
+      LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("uint64");
       result.converted_type                    = &NICE_NAME;
   }
-  if (result.converted_type || var_type == STRING_LIT("bool"))
+  if (result.converted_type || var_type == DQN_STRING_LITERAL("b32"))
       result.recognised = true;
   return result;
 };
@@ -689,7 +691,7 @@ enum struct Tokeniser_ParseTypeAndNameStatus
 //       But since C++ function declarations are *almost* like <Type> <name>
 //       including constructors, as side bonus this function handles parsing the
 //       function name and type which is placed into the variable.
-Tokeniser_ParseTypeAndNameStatus Tokeniser_Tokeniser_ParseTypeAndName(Tokeniser *tokeniser, DeclVariable *variable, String parent_struct_name)
+Tokeniser_ParseTypeAndNameStatus Tokeniser_Tokeniser_ParseTypeAndName(Tokeniser *tokeniser, DeclVariable *variable, Dqn_String parent_struct_name)
 {
     // NOTE: Parse Variable Type and Name
     {
@@ -713,7 +715,7 @@ Tokeniser_ParseTypeAndNameStatus Tokeniser_Tokeniser_ParseTypeAndName(Tokeniser 
                     tokeniser,
                     "Failed to parse constructor '%.*s', internal logic error (most likely, C++ "
                     "has 10 gazillion ways to write the same thing)",
-                    parent_struct_name.len,
+                    parent_struct_name.size,
                     parent_struct_name.str);
                 return Tokeniser_ParseTypeAndNameStatus::Failed;
             }
@@ -758,20 +760,20 @@ Tokeniser_ParseTypeAndNameStatus Tokeniser_Tokeniser_ParseTypeAndName(Tokeniser 
         }
 
         // @TODO(doyle): This captures type modifiers that are placed after the variable decl
-        variable->name     = Token_String(variable_name);
-        variable->type.str = variable_type_first_token.str;
-        variable->type.len = &variable_type_one_past_last_token.str[-1] - variable_type_first_token.str;
-        variable->type     = String_TrimWhitespaceAround(variable->type);
+        variable->name      = Token_String(variable_name);
+        variable->type.str  = variable_type_first_token.str;
+        variable->type.size = &variable_type_one_past_last_token.str[-1] - variable_type_first_token.str;
+        variable->type      = Dqn_String_TrimWhitespaceAround(variable->type);
 
         Token peek = Tokeniser_PeekToken(tokeniser);
-        if (Token_String(variable_name) == STRING_LIT("operator") || peek.type == TokenType::open_paren)
+        if (Token_String(variable_name) == DQN_STRING_LITERAL("operator") || peek.type == TokenType::open_paren)
         {
             if (!Tokeniser_ParseFuctionStartFromName(tokeniser))
             {
                 Tokeniser_ReportCustomError(tokeniser,
                                             "Failed to parse function '%.*s', internal logic error (most likely, C++ "
                                             "has 10 gazillion ways to write the same thing)",
-                                            variable->name.len,
+                                            variable->name.size,
                                             variable->name.str);
                 return Tokeniser_ParseTypeAndNameStatus::Failed;
             }
@@ -783,17 +785,17 @@ Tokeniser_ParseTypeAndNameStatus Tokeniser_Tokeniser_ParseTypeAndName(Tokeniser 
             return Tokeniser_ParseTypeAndNameStatus::Failed;
     }
 
-    for (int i = 0; i < variable->type.len; ++i)
+    for (int i = 0; i < variable->type.size; ++i)
     {
         if (variable->type.str[i] == '<')
         {
             variable->template_expr.str = variable->type.str + (++i);
-            for (int j = ++i; j < variable->type.len; ++j)
+            for (int j = ++i; j < variable->type.size; ++j)
             {
                 if (variable->type.str[j] == '>')
                 {
                     char const *template_expr_end = variable->type.str + j;
-                    variable->template_expr.len    = static_cast<int>(template_expr_end - variable->template_expr.str);
+                    variable->template_expr.size  = static_cast<int>(template_expr_end - variable->template_expr.str);
                     break;
                 }
             }
@@ -803,7 +805,7 @@ Tokeniser_ParseTypeAndNameStatus Tokeniser_Tokeniser_ParseTypeAndName(Tokeniser 
 
     // TODO(doyle): This is horribly incomplete, but we only specify arrays in
     // terms of C++ containers in loki which all have templates. So meh.
-    variable->is_array = variable->template_expr.len > 0;
+    variable->is_array = variable->template_expr.size > 0;
     variable->metadata = DeriveVariableMetadata(variable);
 
     Token token = Tokeniser_NextToken(tokeniser);
@@ -815,7 +817,7 @@ Tokeniser_ParseTypeAndNameStatus Tokeniser_Tokeniser_ParseTypeAndName(Tokeniser 
             return Tokeniser_ParseTypeAndNameStatus::Failed;
 
         variable->value.str = variable_value_first_token.str;
-        variable->value.len = &variable_value_one_past_last_token.str[-1] - variable_value_first_token.str;
+        variable->value.size = &variable_value_one_past_last_token.str[-1] - variable_value_first_token.str;
     }
     else if (token.type != TokenType::semicolon)
     {
@@ -830,8 +832,8 @@ Tokeniser_ParseTypeAndNameStatus Tokeniser_Tokeniser_ParseTypeAndName(Tokeniser 
         token = Tokeniser_NextToken(tokeniser);
     }
 
-    String const skip_marker = STRING_LIT("@NoLokiRPCDocGen");
-    if (variable->comment.len >= skip_marker.len && strncmp(variable->comment.str, skip_marker.str, skip_marker.len) == 0)
+    Dqn_String const skip_marker = DQN_STRING_LITERAL("@NoLokiRPCDocGen");
+    if (variable->comment.size >= skip_marker.size && strncmp(variable->comment.str, skip_marker.str, skip_marker.size) == 0)
         return Tokeniser_ParseTypeAndNameStatus::NotVariable;
 
     return Tokeniser_ParseTypeAndNameStatus::Success;
@@ -839,11 +841,11 @@ Tokeniser_ParseTypeAndNameStatus Tokeniser_Tokeniser_ParseTypeAndName(Tokeniser 
 
 
 DeclStruct UNRESOLVED_ALIAS_STRUCT        = {};
-static String const COMMAND_RPC_PREFIX = STRING_LIT("COMMAND_RPC_");
-bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_struct, String *parent_name)
+static Dqn_String const COMMAND_RPC_PREFIX = DQN_STRING_LITERAL("COMMAND_RPC_");
+b32 Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, b32 root_struct, Dqn_String *parent_name)
 {
-    if (!Tokeniser_RequireToken(tokeniser, STRING_LIT("struct")) &&
-        !Tokeniser_RequireToken(tokeniser, STRING_LIT("class")))
+    if (!Tokeniser_RequireToken(tokeniser, DQN_STRING_LITERAL("struct")) &&
+        !Tokeniser_RequireToken(tokeniser, DQN_STRING_LITERAL("class")))
     {
         Tokeniser_ErrorParseStruct(
             tokeniser,
@@ -862,11 +864,11 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
     result->name = Token_String(struct_name);
     if (!root_struct)
     {
-        if (result->name == STRING_LIT("request"))
+        if (result->name == DQN_STRING_LITERAL("request"))
         {
             result->type = DeclStructType::RPCRequest;
         }
-        if (result->name == STRING_LIT("response"))
+        if (result->name == DQN_STRING_LITERAL("response"))
         {
             result->type = DeclStructType::RPCResponse;
         }
@@ -879,19 +881,21 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
             Token inheritance;
             if (Tokeniser_RequireTokenType(tokeniser, TokenType::identifier, &inheritance))
             {
-                String inheritance_lit = Token_String(inheritance);
-                if (inheritance_lit == STRING_LIT("PUBLIC"))
+                Dqn_String inheritance_lit = Token_String(inheritance);
+                if (inheritance_lit == DQN_STRING_LITERAL("PUBLIC"))
                 {
                 }
-                else if (inheritance_lit == STRING_LIT("BINARY")) result->type = DeclStructType::BinaryRPCCommand;
-                else if (inheritance_lit == STRING_LIT("LEGACY")) result->type = DeclStructType::JsonRPCCommand;
-                else if (inheritance_lit == STRING_LIT("EMPTY")) { }
-                else if (inheritance_lit == STRING_LIT("RPC_COMMAND")) result->type = DeclStructType::JsonRPCCommand;
-                else if (inheritance_lit == STRING_LIT("STATUS"))
+                else if (inheritance_lit == DQN_STRING_LITERAL("BINARY")) result->type = DeclStructType::BinaryRPCCommand;
+                else if (inheritance_lit == DQN_STRING_LITERAL("LEGACY")) result->type = DeclStructType::JsonRPCCommand;
+                else if (inheritance_lit == DQN_STRING_LITERAL("EMPTY"))
+                {
+                }
+                else if (inheritance_lit == DQN_STRING_LITERAL("RPC_COMMAND")) result->type = DeclStructType::JsonRPCCommand;
+                else if (inheritance_lit == DQN_STRING_LITERAL("STATUS"))
                 {
                     // @TODO(doyle):
                 }
-                else if (inheritance_lit == STRING_LIT("public"))
+                else if (inheritance_lit == DQN_STRING_LITERAL("public"))
                 {
                     // NOTE: Ignore public modifier
                     continue;
@@ -928,14 +932,17 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
 
                         if (next.type == TokenType::namespace_colon)
                         {
-                            if (!Tokeniser_RequireTokenType(tokeniser, TokenType::identifier))
+                            Tokeniser_AcceptToken(tokeniser, next); // Accept the namespace token
+                            Token peek_token = Tokeniser_PeekToken(tokeniser);
+                            if (peek_token.type != TokenType::identifier)
                             {
-                                Tokeniser_ErrorParseStruct(
-                                    tokeniser,
-                                    parent_name,
-                                    "Namespace colon '::' should be followed by an identifier in 'struct %.*s'",
-                                    result->name.len,
-                                    result->name.str);
+                                Tokeniser_ErrorParseStruct(tokeniser,
+                                                           parent_name,
+                                                           "Namespace colon '::' should be followed by an identifier "
+                                                           "in 'struct %.*s', received token '%.*s'",
+                                                           DQN_STRING_PRINTF(result->name),
+                                                           DQN_STRING_PRINTF(Token_String(peek_token))
+                                                           );
                                 return false;
                             }
                         }
@@ -948,9 +955,9 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
                     Token one_after_last_inheritance_name = Tokeniser_PeekToken(tokeniser);
                     if (one_after_last_inheritance_name.type == TokenType::left_curly_brace)
                     {
-                        result->inheritance_parent_name.len     = &one_after_last_inheritance_name.str[-1] - inheritance_lit.str;
-                        result->inheritance_parent_name.str     = inheritance_lit.str;
-                        result->inheritance_parent_name = String_TrimWhitespaceAround(result->inheritance_parent_name);
+                        result->inheritance_parent_name.size = &one_after_last_inheritance_name.str[-1] - inheritance_lit.str;
+                        result->inheritance_parent_name.str  = inheritance_lit.str;
+                        result->inheritance_parent_name = Dqn_String_TrimWhitespaceAround(result->inheritance_parent_name);
                         break;
                     }
                     else
@@ -959,9 +966,9 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
                             tokeniser,
                             parent_name,
                             "Detected inheritance identifier '%.*s' following struct name '%.*s'",
-                            result->inheritance_parent_name.len,
+                            result->inheritance_parent_name.size,
                             result->inheritance_parent_name.str,
-                            result->name.len,
+                            result->name.size,
                             result->name.str);
                     }
                 }
@@ -1002,8 +1009,8 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
             continue;
         }
 
-        String token_lit = Token_String(token);
-        if (token_lit == STRING_LIT("struct") || token_lit == STRING_LIT("class"))
+        Dqn_String token_lit = Token_String(token);
+        if (token_lit == DQN_STRING_LITERAL("struct") || token_lit == DQN_STRING_LITERAL("class"))
         {
             DeclStruct decl = {};
             if (!Tokeniser_ParseStruct(tokeniser, &decl, false /*root_struct*/, &result->name))
@@ -1011,18 +1018,18 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
 
             result->inner_structs.push_back(std::move(decl));
         }
-        else if (token_lit == STRING_LIT("enum"))
+        else if (token_lit == DQN_STRING_LITERAL("enum"))
         {
             // @TODO(doyle): Actually handle
             Tokeniser_AdvanceToTokenType(tokeniser, TokenType::semicolon);
         }
-        else if (token_lit == STRING_LIT("KV_MAP_SERIALIZABLE"))
+        else if (token_lit == DQN_STRING_LITERAL("KV_MAP_SERIALIZABLE"))
         {
             Tokeniser_NextToken(tokeniser);
         }
-        else if (token_lit == STRING_LIT("BEGIN_SERIALIZE"))
+        else if (token_lit == DQN_STRING_LITERAL("BEGIN_SERIALIZE"))
         {
-            if (!Tokeniser_NextMarker(tokeniser, STRING_LIT("END_SERIALIZE()")))
+            if (!Tokeniser_NextMarker(tokeniser, DQN_STRING_LITERAL("END_SERIALIZE()")))
             {
                 Tokeniser_ErrorParseStruct(
                     tokeniser,
@@ -1031,9 +1038,9 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
                 return false;
             }
         }
-        else if (token_lit == STRING_LIT("BEGIN_SERIALIZE_OBJECT"))
+        else if (token_lit == DQN_STRING_LITERAL("BEGIN_SERIALIZE_OBJECT"))
         {
-            if (!Tokeniser_NextMarker(tokeniser, STRING_LIT("END_SERIALIZE()")))
+            if (!Tokeniser_NextMarker(tokeniser, DQN_STRING_LITERAL("END_SERIALIZE()")))
             {
                 Tokeniser_ErrorParseStruct(
                     tokeniser,
@@ -1042,9 +1049,9 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
                 return false;
             }
         }
-        else if (token_lit == STRING_LIT("BEGIN_KV_SERIALIZE_MAP"))
+        else if (token_lit == DQN_STRING_LITERAL("BEGIN_KV_SERIALIZE_MAP"))
         {
-            if (!Tokeniser_NextMarker(tokeniser, STRING_LIT("END_KV_SERIALIZE_MAP()")))
+            if (!Tokeniser_NextMarker(tokeniser, DQN_STRING_LITERAL("END_KV_SERIALIZE_MAP()")))
             {
                 Tokeniser_ErrorParseStruct(
                     tokeniser,
@@ -1053,7 +1060,7 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
                 return false;
             }
         }
-        else if (token_lit == STRING_LIT("using"))
+        else if (token_lit == DQN_STRING_LITERAL("using"))
         {
             Tokeniser_NextToken(tokeniser);
             Token using_name = {};
@@ -1065,11 +1072,11 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
                     Token using_value_one_past_last_token = {};
                     Tokeniser_AdvanceToTokenType(tokeniser, TokenType::semicolon, &using_value_one_past_last_token);
 
-                    auto using_value = String(using_value_first_token.str, using_value_one_past_last_token.str - using_value_first_token.str);
+                    auto using_value = Dqn_String_Init(using_value_first_token.str, using_value_one_past_last_token.str - using_value_first_token.str);
                     DeclVariable variable = {};
                     variable.aliases_to = &UNRESOLVED_ALIAS_STRUCT; // NOTE: Resolve the declaration later
                     variable.name       = Token_String(using_name);
-                    variable.type       = String_TrimWhitespaceAround(using_value);
+                    variable.type       = Dqn_String_TrimWhitespaceAround(using_value);
                     variable.metadata   = DeriveVariableMetadata(&variable);
 
                     Token comment = {};
@@ -1099,17 +1106,17 @@ bool Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, bool root_s
                 result->variables.push_back(variable);
             else if (status == Tokeniser_ParseTypeAndNameStatus::MemberFunction)
             {
-                if (variable.name == STRING_LIT("names"))
+                if (variable.name == DQN_STRING_LITERAL("names"))
                 {
                     Tokeniser name_tokeniser = *tokeniser;
-                    name_tokeniser.ptr         = variable.name.str_ + variable.name.len;
-                    name_tokeniser.file        = tokeniser->file;
+                    name_tokeniser.ptr       = variable.name.str + variable.name.size;
+                    name_tokeniser.file      = tokeniser->file;
                     if (!Tokeniser_ParseRPCAliasNamess(&name_tokeniser, result))
                     {
                         Tokeniser_ErrorParseStruct(tokeniser,
                                                    parent_name,
                                                    "Failed to parse RPC names in struct '%.*s'",
-                                                   result->name.len,
+                                                   result->name.size,
                                                    result->name.str);
                         return false;
                     }

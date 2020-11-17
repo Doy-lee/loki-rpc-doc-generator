@@ -32,60 +32,32 @@
 #include <stdarg.h>
 #include <time.h>
 
-#define local_persist static
+using b32 = int;
+#define LOCAL_PERSIST static
+#define FILE_SCOPE static
 
-template <typename proc_t>
-struct Defer
-{
-    proc_t p;
-    Defer(proc_t proc) : p(proc) {}
-    ~Defer() { p(); }
-};
-
-struct DeferHelper
-{
-    template <typename proc_t>
-    Defer<proc_t> operator+(proc_t p) { return Defer<proc_t>(p); }
-};
-
-#define TOKEN_COMBINE2(x, y) x ## y
-#define TOKEN_COMBINE(x, y) TOKEN_COMBINE2(x, y)
-#define DEFER const auto TOKEN_COMBINE2(DeferLambda_, __COUNTER__) = DeferHelper() + [&]()
 #define MIN_VAL(a, b) (a) < (b) ? a : b
-
 #define ARRAY_COUNT(array) sizeof(array)/sizeof(array[0])
 #define CHAR_COUNT(str) (ARRAY_COUNT(str) - 1)
-
-struct String
-{
-    String() = default;
-    String(char const *str_, int len_) : str(str_), len(len_) {}
-    union {
-        char const *str;
-        char *str_;
-    };
-    int len;
-};
-#define STRING_LIT(str) (String) {str, CHAR_COUNT(str)}
 
 struct DeclVariableMetadata
 {
   // NOTE: For basic primitives like 'bool', this is already recognisable and
   // doesn't need to be converted to a nicer representation, so we encode that
   // situation into 'recognised'.
-  bool          is_std_array;
-  bool          recognised;
-  String const *converted_type;          // Convert c-isms to more generic pseudo code if available i.e. uint64_t to uint64
-  String const *converted_template_expr; // Ditto, but for the contents inside the template expression
+  bool              is_std_array;
+  bool              recognised;
+  Dqn_String const *converted_type;          // Convert c-isms to more generic pseudo code if available i.e. uint64_t to uint64
+  Dqn_String const *converted_template_expr; // Ditto, but for the contents inside the template expression
 };
 
 struct DeclVariable
 {
-  String                template_expr;
-  String                type;
-  String                name;
-  String                comment;
-  String                value;    // NOTE: Most of the times this is empty
+  Dqn_String            template_expr;
+  Dqn_String            type;
+  Dqn_String            name;
+  Dqn_String            comment;
+  Dqn_String            value;    // NOTE: Most of the times this is empty
   bool                  is_array;
   DeclVariableMetadata  metadata;
   struct DeclStruct    *aliases_to;
@@ -103,11 +75,11 @@ enum DeclStructType
 
 struct DeclStruct
 {
-  std::vector<String>       aliases;
-  std::vector<String>       pre_decl_comments;
-  String                    inheritance_parent_name;
+  std::vector<Dqn_String>   aliases;
+  std::vector<Dqn_String>   pre_decl_comments;
+  Dqn_String                inheritance_parent_name;
   DeclStructType            type;
-  String                    name;
+  Dqn_String                name;
   std::vector<DeclStruct>   inner_structs;
   std::vector<DeclVariable> variables;
 };
