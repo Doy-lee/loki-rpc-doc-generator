@@ -599,8 +599,8 @@ static DeclVariableMetadata DeriveVariableMetadata(DeclVariable *variable)
       // @TODO(doyle): Yes, I know .. not cool. This can be improved by
       // constructing the tokeniser inplace and decoding the template.
       LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("uint16[3]");
-      result.is_std_array                  = true;
-      result.converted_type                = &NICE_NAME;
+      result.is_std_array                      = true;
+      result.converted_type                    = &NICE_NAME;
   }
   else if (var_type == DQN_STRING_LITERAL("std::string"))
   {
@@ -882,14 +882,11 @@ b32 Tokeniser_ParseStruct(Tokeniser *tokeniser, DeclStruct *result, b32 root_str
             if (Tokeniser_RequireTokenType(tokeniser, TokenType::identifier, &inheritance))
             {
                 Dqn_String inheritance_lit = Token_String(inheritance);
-                if (inheritance_lit == DQN_STRING_LITERAL("PUBLIC"))
-                {
-                }
+                if (inheritance_lit == DQN_STRING_LITERAL("PUBLIC")) { }
                 else if (inheritance_lit == DQN_STRING_LITERAL("BINARY")) result->type = DeclStructType::BinaryRPCCommand;
                 else if (inheritance_lit == DQN_STRING_LITERAL("LEGACY")) result->type = DeclStructType::JsonRPCCommand;
-                else if (inheritance_lit == DQN_STRING_LITERAL("EMPTY"))
-                {
-                }
+                else if (inheritance_lit == DQN_STRING_LITERAL("EMPTY")) { }
+                else if (inheritance_lit == DQN_STRING_LITERAL("RESTRICTED")) { }
                 else if (inheritance_lit == DQN_STRING_LITERAL("RPC_COMMAND")) result->type = DeclStructType::JsonRPCCommand;
                 else if (inheritance_lit == DQN_STRING_LITERAL("STATUS"))
                 {

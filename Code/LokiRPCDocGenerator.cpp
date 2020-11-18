@@ -94,8 +94,10 @@ DeclStruct const *LookupTypeDefinition(std::vector<DeclStruct const *> *global_h
         // variable -> type declaration can be resolved.
         if (!result)
         {
-            Dqn_String const skip_namespace[] = {
-                DQN_STRING_LITERAL("cryptonote::"), DQN_STRING_LITERAL("rpc::"), DQN_STRING_LITERAL("service_nodes::")};
+            Dqn_String const skip_namespace[] = {DQN_STRING_LITERAL("cryptonote::"),
+                                                 DQN_STRING_LITERAL("rpc::"),
+                                                 DQN_STRING_LITERAL("service_nodes::"),
+                                                 DQN_STRING_LITERAL("wallet::")};
             for (auto const &name : skip_namespace)
             {
                 if (var_type.size >= name.size && strncmp(name.str, var_type.str, name.size) == 0)
@@ -757,6 +759,13 @@ void GenerateMarkdown(DeclContext *context)
 
     for (DeclStruct const &decl : context->declarations)
     {
+        // TODO(doyle): Hack, avoid RESTRICTED rpc struct for now which is
+        // detected as a rpc command because it inherits RPC_COMMAND, but
+        // doesn't specify a request/response.
+
+        if (decl.name == DQN_STRING_LITERAL("RESTRICTED"))
+            continue;
+
         if (decl.type == DeclStructType::JsonRPCCommand)
             json_rpc_structs.push_back(&decl);
         else if (decl.type == DeclStructType::BinaryRPCCommand)
@@ -1042,7 +1051,7 @@ int main(int argc, char *argv[])
                 if (peek.type == TokenType::identifier)
                 {
                     Dqn_String peek_lit = Token_String(peek);
-                    if (peek_lit ==  DQN_STRING_LITERAL("struct") || peek_lit == DQN_STRING_LITERAL("class"))
+                    if (peek_lit == DQN_STRING_LITERAL("struct") || peek_lit == DQN_STRING_LITERAL("class"))
                     {
                         if (Tokeniser_ParseStruct(&tokeniser, &decl, true /*root_struct*/, nullptr /*parent name*/))
                             context.declarations.push_back(std::move(decl));
@@ -1104,7 +1113,7 @@ int main(int argc, char *argv[])
                 // declaration.
 
                 Tokeniser tokeniser = {};
-                tokeniser.ptr         = variable.name.str;
+                tokeniser.ptr       = variable.name.str;
 
                 Token name = Tokeniser_NextToken(&tokeniser);
                 if (!Tokeniser_RequireTokenType(&tokeniser, TokenType::equal))
@@ -1113,15 +1122,15 @@ int main(int argc, char *argv[])
                     return false;
                 }
 
-                Token namespace_token = {};
-                if (!Tokeniser_RequireTokenType(&tokeniser, TokenType::identifier, &namespace_token))
+                Token token_after_equals = {};
+                if (!Tokeniser_RequireTokenType(&tokeniser, TokenType::identifier, &token_after_equals))
                 {
                     Tokeniser_ErrorLastRequiredToken(&tokeniser);
                     return false;
                 }
 
-                Dqn_String namespace_lit = Token_String(namespace_token);
-                if (namespace_lit == DQN_STRING_LITERAL("std"))
+                Dqn_String token_after_equals_lit = Token_String(token_after_equals);
+                if (token_after_equals_lit == DQN_STRING_LITERAL("std"))
                 {
                     // NOTE: Handle the standard library specially by creating
                     // "fake" structs that contain 1 member with the standard
@@ -1129,10 +1138,9 @@ int main(int argc, char *argv[])
 
                     context.alias_declarations.emplace_back();
                     DeclStruct &alias_struct = context.alias_declarations.back();
-                    variable.aliases_to       = &alias_struct; // Patch the alias pointer
-
-                    alias_struct.type = DeclStructType::Helper;
-                    alias_struct.name = Token_String(name);
+                    alias_struct.type        = DeclStructType::Helper;
+                    alias_struct.name        = Token_String(name);
+                    variable.aliases_to      = &alias_struct; // Patch the alias pointer
 
                     DeclVariable variable_no_alias = variable;
                     variable_no_alias.name         = RESULT_STR;
@@ -1141,54 +1149,112 @@ int main(int argc, char *argv[])
                 }
                 else
                 {
-                    // @TODO(doyle): This bit of code assumes that the
-                    // declaration isn't namespaced too crazy and that the
-                    // declaration's first token is something that we can find
-                    // in our list of declarations.
-
-                    // For example
-                    //
-                    // using response = GET_OUTPUT_DISTRIBUTION::response;
-                    //
-                    // and not
-                    //
-                    // using response = cryptonote::rpc::GET_OUTPUT_DISTRIBUTION::response;
-                    //
-
-                    for (auto &other_struct : context.declarations)
+                    Token next_token = Tokeniser_PeekToken(&tokeniser);
+                    if (next_token.type == TokenType::semicolon)
                     {
-                        if (other_struct.name == namespace_lit)
+                        // NOTE: i.e. something like
+                        //
+                        //
+                        //                      +--------------- token_after_equals
+                        //           name       |
+                        //           |          |    +---------- next_token
+                        //           V          V    V
+                        //     using response = EMPTY;
+                        //
+                        // We need to try and patch this variable to point to the right
+                        // declaration.
+
+                        for (auto &global_struct : context.declarations)
                         {
-                            if (!Tokeniser_RequireTokenType(&tokeniser, TokenType::namespace_colon))
+                            if (global_struct.name == token_after_equals_lit)
                             {
-                                Tokeniser_ErrorLastRequiredToken(&tokeniser);
-                                return false;
+                                // NOTE: Hurray, found the struct this
+                                // variable was referencing, patch the
+                                // pointer!
+                                variable.aliases_to = &global_struct;
+                                break;
                             }
-
-                            Token namespace_child = {};
-                            if (!Tokeniser_RequireTokenType(&tokeniser, TokenType::identifier, &namespace_child))
+                            else
                             {
-                                Tokeniser_ErrorLastRequiredToken(&tokeniser);
-                                return false;
-                            }
-
-                            for (auto &inner_struct : other_struct.inner_structs)
-                            {
-                                if (inner_struct.name == Token_String(namespace_child))
+                                b32 found = false;
+                                // NOTE: Otherwise search the struct's children
+                                // declarations for matching name.
+                                for (auto &child_struct : global_struct.inner_structs)
                                 {
-                                    // NOTE: Hurray, found the struct this
-                                    // variable was referencing, patch the
-                                    // pointer!
-                                    variable.aliases_to = &inner_struct;
-                                    break;
+                                    if (child_struct.name == token_after_equals_lit)
+                                    {
+                                        // NOTE: Hurray, found the struct this
+                                        // variable was referencing, patch the
+                                        // pointer!
+                                        found               = true;
+                                        variable.aliases_to = &child_struct;
+                                        break;
+                                    }
                                 }
-                            }
 
-                            if (variable.aliases_to == &UNRESOLVED_ALIAS_STRUCT)
+                                if (found)
+                                    break;
+                            }
+                        }
+
+                        if (variable.aliases_to == &UNRESOLVED_ALIAS_STRUCT)
+                        {
+                            Dqn_String eol_string = String_TillEOL(variable.name.str);
+                            fprintf(stderr, "Failed to resolve C++ using alias to a declaration '%.*s'", DQN_STRING_PRINTF(eol_string));
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        // @TODO(doyle): This bit of code assumes that the
+                        // declaration isn't namespaced too crazy and that the
+                        // declaration's first token is something that we can find
+                        // in our list of declarations.
+
+                        // For example
+                        //
+                        // using response = GET_OUTPUT_DISTRIBUTION::response;
+                        //
+                        // and not
+                        //
+                        // using response = cryptonote::rpc::GET_OUTPUT_DISTRIBUTION::response;
+                        //
+
+                        for (auto &other_struct : context.declarations)
+                        {
+                            if (other_struct.name == token_after_equals_lit)
                             {
-                                Dqn_String eol_string = String_TillEOL(variable.name.str);
-                                fprintf(stderr, "Failed to resolve C++ using alias to a declaration '%.*s'", DQN_STRING_PRINTF(eol_string));
-                                return false;
+                                if (!Tokeniser_RequireTokenType(&tokeniser, TokenType::namespace_colon))
+                                {
+                                    Tokeniser_ErrorLastRequiredToken(&tokeniser);
+                                    return false;
+                                }
+
+                                Token namespace_child = {};
+                                if (!Tokeniser_RequireTokenType(&tokeniser, TokenType::identifier, &namespace_child))
+                                {
+                                    Tokeniser_ErrorLastRequiredToken(&tokeniser);
+                                    return false;
+                                }
+
+                                for (auto &inner_struct : other_struct.inner_structs)
+                                {
+                                    if (inner_struct.name == Token_String(namespace_child))
+                                    {
+                                        // NOTE: Hurray, found the struct this
+                                        // variable was referencing, patch the
+                                        // pointer!
+                                        variable.aliases_to = &inner_struct;
+                                        break;
+                                    }
+                                }
+
+                                if (variable.aliases_to == &UNRESOLVED_ALIAS_STRUCT)
+                                {
+                                    Dqn_String eol_string = String_TillEOL(variable.name.str);
+                                    fprintf(stderr, "Failed to resolve C++ using alias to a declaration '%.*s'", DQN_STRING_PRINTF(eol_string));
+                                    return false;
+                                }
                             }
                         }
                     }
