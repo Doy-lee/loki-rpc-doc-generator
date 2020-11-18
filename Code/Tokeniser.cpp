@@ -674,7 +674,7 @@ static DeclVariableMetadata DeriveVariableMetadata(DeclVariable *variable)
       LOCAL_PERSIST Dqn_String const NICE_NAME = DQN_STRING_LITERAL("uint64");
       result.converted_type                    = &NICE_NAME;
   }
-  if (result.converted_type || var_type == DQN_STRING_LITERAL("b32"))
+  if (result.converted_type || var_type == DQN_STRING_LITERAL("bool"))
       result.recognised = true;
   return result;
 };

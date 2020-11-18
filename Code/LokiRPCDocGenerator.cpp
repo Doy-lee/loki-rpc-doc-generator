@@ -119,13 +119,16 @@ DeclStruct const *LookupTypeDefinition(std::vector<DeclStruct const *> *global_h
 
 void Print_Indented(int indent_level, FILE *dest, char const *fmt = nullptr, ...)
 {
-  for (int i = 0; i < indent_level * 2; ++i)
-    fprintf(dest, " ");
+    for (int i = 0; i < indent_level * 2; ++i)
+        fprintf(dest, " ");
 
-  va_list va;
-  va_start(va, fmt);
-  vfprintf(dest, fmt, va);
-  va_end(va);
+    if (fmt)
+    {
+        va_list va;
+        va_start(va, fmt);
+        vfprintf(dest, fmt, va);
+        va_end(va);
+    }
 }
 
 // NOTE: When recursively printing a struct, this keeps history of the parents we're iterating through for metadata purposes
@@ -548,12 +551,12 @@ void Print_Variable(std::vector<DeclStruct const *> *global_helper_structs, std:
       var_type = variable->metadata.converted_type;
 
     Print_Indented(indent_level, stdout);
-    fprintf(stdout, " * `%.*s - %.*s", DQN_CAST(int)variable->name.size, variable->name.str, DQN_CAST(int)var_type->size, var_type->str);
+    fprintf(stdout, " * `%.*s - %.*s", DQN_STRING_PRINTF(variable->name), DQN_STRING_PRINTF(*var_type));
     if (variable->is_array && !variable->metadata.is_std_array) fprintf(stdout, "[]");
-    if (variable->value.size > 0) fprintf(stdout, " = %.*s", DQN_CAST(int)variable->value.size, variable->value.str);
+    if (variable->value.size > 0) fprintf(stdout, " = %.*s", DQN_STRING_PRINTF(variable->value));
     fprintf(stdout, "`");
 
-    if (variable->comment.size > 0) fprintf(stdout, ": %.*s", DQN_CAST(int)variable->comment.size, variable->comment.str);
+    if (variable->comment.size > 0) fprintf(stdout, ": %.*s", DQN_STRING_PRINTF(variable->comment));
     fprintf(stdout, "\n");
 
     if (!variable->metadata.recognised)
@@ -567,29 +570,28 @@ void Print_Variable(std::vector<DeclStruct const *> *global_helper_structs, std:
         }
         else
         {
-            fprintf(stderr, "Failed to find type definition for type '%.*s'\n", DQN_CAST(int)variable->type.size, variable->type.str);
+            fprintf(stderr, "Failed to find type definition for type '%.*s'\n", DQN_STRING_PRINTF(variable->type));
         }
     }
 }
 
-void Print_BackslashEscapedString(FILE *file, Dqn_String const *string, char char_to_escape)
+void Print_BackslashEscapedString(FILE *file, Dqn_String string, char char_to_escape)
 {
-  for (Dqn_isize i = 0; i < string->size; ++i)
-  {
-    char ch = string->str[i];
-    if (ch == char_to_escape) fputc('\\', file);
-    fputc(ch, file);
-  }
+    for (Dqn_isize i = 0; i < string.size; ++i)
+    {
+        char ch = string.str[i];
+        if (ch == char_to_escape) fputc('\\', file);
+        fputc(ch, file);
+    }
 }
-
 
 void RecursivelyCollectChildrenStructs(DeclStruct const *src, std::vector<DeclStruct const *> *dest)
 {
-  for (auto const &child : src->inner_structs)
-  {
-      RecursivelyCollectChildrenStructs(&child, dest);
-      dest->push_back(&child);
-  }
+    for (auto const &child : src->inner_structs)
+    {
+        RecursivelyCollectChildrenStructs(&child, dest);
+        dest->push_back(&child);
+    }
 }
 
 DeclStruct *DeclContext_SearchStruct(DeclContext *context, Dqn_String name)
@@ -717,11 +719,7 @@ bool Print_StructVariables(DeclContext *context,
 void Print_TableOfContentsEntry(Dqn_String name)
 {
     fputs(" - [", stdout);
-#if 0
     Print_BackslashEscapedString(stdout, name, '_');
-#else
-    fprintf(stdout, "%.*s", DQN_STRING_PRINTF(name));
-#endif
 
     fputs("](#", stdout);
     for (int i = 0; i < name.size; ++i)

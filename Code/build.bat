@@ -18,7 +18,6 @@ echo title: Loki.network Documentation ^| Loki and Monero Daemon RPC Guide > Dae
 echo description: This is a list of the daemon RPC calls, their inputs and outputs, and examples of each automatically generated. This guide can be used by coins who share a codebase with Loki and Monero. >> DaemonRPCBeta.md
 echo.>> DaemonRPCBeta.md
 ..\Bin\LokiRPCDocGenerator.exe %daemon_files% >> DaemonRPCBeta.md
-subaddress_index.h rpc_handler.h service_node_list.h verification_context.h cryptonote_protocol_defs.h core_rpc_server_commands_defs.h
 
 echo title: Loki.network Documentation ^| Loki and Monero Wallet RPC Guide > WalletRPCBeta.md
 echo description: This is a list of the wallet RPC calls, their inputs and outputs, and examples of each automatically updated. This guide can be used by coins who share a codebase with Loki and Monero. >> WalletRPCBeta.md
